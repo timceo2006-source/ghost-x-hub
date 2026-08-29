@@ -2,7 +2,6 @@ local TARGET_PLACE_ID = 77649408247578
 local CONFIG_FOLDER = "WindUI"
 local CONFIG_FILE = CONFIG_FOLDER .. "/config.json"
 
-
 local selectedMap = "Desert Temple"
 local selectedDifficulty = "Insane"
 
@@ -52,7 +51,7 @@ local function loadConfig()
     end
 end
 
--- โหลดค่าตั้งต้นจากไฟล์ Config ก่อนสร้าง UI
+-- โหลดค่าจาก Config เข้าตัวแปรก่อนสร้าง UI
 loadConfig()
 
 local function pressKey(keyStr)
@@ -246,7 +245,8 @@ LobbyTab:Section({
     TextSize = 16,
 })
 
-LobbyTab:Dropdown({
+-- เก็บตัวแปร UI Elements ไว้ใช้งาน
+local MapDropdown = LobbyTab:Dropdown({
     Title = "Map Selected",
     Values = {
         "Egg Island", "Desert Temple", "Winter Outpost", "Pirate Island",
@@ -254,17 +254,17 @@ LobbyTab:Dropdown({
         "Ghastly Harbor", "Steampunk Sewers", "Orbital Outpost", "Volcanic Chambers",
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
-    Value = selectedMap, -- อัปเดตให้แสดงผลค่าปัจจุบันที่โหลดมา
+    Default = selectedMap,
     Callback = function(value)
         selectedMap = value
         saveConfig()
     end
 })
 
-LobbyTab:Dropdown({
+local DifficultyDropdown = LobbyTab:Dropdown({
     Title = "Difficulty Selection",
     Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
-    Value = selectedDifficulty, -- อัปเดตให้แสดงผลค่าปัจจุบันที่โหลดมา
+    Default = selectedDifficulty,
     Callback = function(value)
         selectedDifficulty = value
         saveConfig()
@@ -273,7 +273,7 @@ LobbyTab:Dropdown({
 
 local AutoStartToggle = LobbyTab:Toggle({
     Title = "AutoStart",
-    Value = getgenv().AutoCreateAndStart, -- เปลี่ยน Default เป็น Value เพื่อ Force สถานะปุ่ม
+    Default = getgenv().AutoCreateAndStart,
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
         saveConfig()
@@ -295,7 +295,7 @@ DungeonTab:Section({
 local AutoFarmToggle = DungeonTab:Toggle({
     Title = "Auto Farm",
     Desc = "Auto Farm Dungeon & Boss Dodge",
-    Value = getgenv().AutoFarmEnabled, -- เปลี่ยน Default เป็น Value เพื่อ Force สถานะปุ่ม
+    Default = getgenv().AutoFarmEnabled,
     Callback = function(State)
         getgenv().AutoFarmEnabled = State
         saveConfig()
@@ -307,6 +307,16 @@ local AutoFarmToggle = DungeonTab:Toggle({
         end
     end
 })
+
+-- บังคับเปลี่ยนหน้าตาปุ่ม/ดรอปดาวน์ บน UI ให้ตรงตามไฟล์ Config ที่โหลดมา
+task.defer(function()
+    pcall(function()
+        if MapDropdown and MapDropdown.Set then MapDropdown:Set(selectedMap) end
+        if DifficultyDropdown and DifficultyDropdown.Set then DifficultyDropdown:Set(selectedDifficulty) end
+        if AutoStartToggle and AutoStartToggle.Set then AutoStartToggle:Set(getgenv().AutoCreateAndStart) end
+        if AutoFarmToggle and AutoFarmToggle.Set then AutoFarmToggle:Set(getgenv().AutoFarmEnabled) end
+    end)
+end)
 
 -- ลูปการทำงานใน Lobby
 task.spawn(function()
@@ -344,7 +354,7 @@ task.spawn(function()
     end
 end)
 
--- ควบคุมการเริ่มฟาร์มแบบอัตโนมัติเมื่อวาร์ปเข้าด่าน
+-- ควบคุมการเริ่มฟาร์มอัตโนมัติเมื่อวาร์ปเปลี่ยนด่าน
 if game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(function()
         if getgenv().AutoFarmEnabled then
