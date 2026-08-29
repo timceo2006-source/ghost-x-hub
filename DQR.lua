@@ -1,6 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
-local CONFIG_FOLDER = "GhostXHub"
+local CONFIG_FOLDER = "WindUI"
 local CONFIG_FILE = CONFIG_FOLDER .. "/config.json"
+
 
 local selectedMap = "Desert Temple"
 local selectedDifficulty = "Insane"
