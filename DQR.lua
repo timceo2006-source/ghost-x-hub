@@ -192,9 +192,8 @@ local Window = WindUI:CreateWindow({
     },
 })
 
--- อ้างอิง ConfigManager
-local ConfigManager = Window.ConfigManager
-local myConfig = ConfigManager:CreateConfig("config1", true)
+-- สร้างระบบ Config ปลอดภัย ไม่พังปุ่มย่อ UI
+local Config = Window:Config("config1")
 
 local LobbyTab = Window:Tab({
     Title = "Lobby",
@@ -208,7 +207,7 @@ LobbyTab:Section({
     TextSize = 16,
 })
 
-local mapDropdown = LobbyTab:Dropdown({
+LobbyTab:Dropdown({
     Title = "Map Selected",
     Values = {
         "Egg Island", "Desert Temple", "Winter Outpost", "Pirate Island",
@@ -216,34 +215,32 @@ local mapDropdown = LobbyTab:Dropdown({
         "Ghastly Harbor", "Steampunk Sewers", "Orbital Outpost", "Volcanic Chambers",
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
-    Default = selectedMap,
+    Value = selectedMap,
     Flag = "SelectedMap",
     Callback = function(value)
         selectedMap = value
-        myConfig:Save()
+        pcall(function() Config:Save() end)
     end
 })
-myConfig:Register("SelectedMap", mapDropdown)
 
-local diffDropdown = LobbyTab:Dropdown({
+LobbyTab:Dropdown({
     Title = "Difficulty Selection",
     Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
-    Default = selectedDifficulty,
+    Value = selectedDifficulty,
     Flag = "SelectedDifficulty",
     Callback = function(value)
         selectedDifficulty = value
-        myConfig:Save()
+        pcall(function() Config:Save() end)
     end
 })
-myConfig:Register("SelectedDifficulty", diffDropdown)
 
-local autoStartToggle = LobbyTab:Toggle({
+LobbyTab:Toggle({
     Title = "AutoStart",
-    Default = getgenv().AutoCreateAndStart,
+    Value = getgenv().AutoCreateAndStart,
     Flag = "AutoCreateAndStart",
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
-        myConfig:Save()
+        pcall(function() Config:Save() end)
     end
 })
 
@@ -259,14 +256,14 @@ DungeonTab:Section({
     TextSize = 16,
 })
 
-local autoFarmToggle = DungeonTab:Toggle({
+DungeonTab:Toggle({
     Title = "Auto Farm",
     Desc = "Auto Farm Dungeon & Boss Dodge",
-    Default = getgenv().AutoFarmEnabled,
+    Value = getgenv().AutoFarmEnabled,
     Flag = "AutoFarmEnabled",
     Callback = function(State)
         getgenv().AutoFarmEnabled = State
-        myConfig:Save()
+        pcall(function() Config:Save() end)
 
         if State then
             startFarm()
@@ -276,13 +273,14 @@ local autoFarmToggle = DungeonTab:Toggle({
     end
 })
 
--- โหลดค่าเดิมจากไฟล์ตาม Doc
+-- โหลดค่าเดิมเข้าตัวแปร
 pcall(function()
-    myConfig:Load()
-    selectedMap = Window.Flags["SelectedMap"] and Window.Flags["SelectedMap"].Value or selectedMap
-    selectedDifficulty = Window.Flags["SelectedDifficulty"] and Window.Flags["SelectedDifficulty"].Value or selectedDifficulty
-    getgenv().AutoCreateAndStart = Window.Flags["AutoCreateAndStart"] and Window.Flags["AutoCreateAndStart"].Value or getgenv().AutoCreateAndStart
-    getgenv().AutoFarmEnabled = Window.Flags["AutoFarmEnabled"] and Window.Flags["AutoFarmEnabled"].Value or getgenv().AutoFarmEnabled
+    Config:Load()
+    task.wait(0.2)
+    if Window.Flags["SelectedMap"] then selectedMap = Window.Flags["SelectedMap"].Value end
+    if Window.Flags["SelectedDifficulty"] then selectedDifficulty = Window.Flags["SelectedDifficulty"].Value end
+    if Window.Flags["AutoCreateAndStart"] then getgenv().AutoCreateAndStart = Window.Flags["AutoCreateAndStart"].Value end
+    if Window.Flags["AutoFarmEnabled"] then getgenv().AutoFarmEnabled = Window.Flags["AutoFarmEnabled"].Value end
 end)
 
 -- ================= Loops & Execution =================
