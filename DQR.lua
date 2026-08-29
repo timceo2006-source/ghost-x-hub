@@ -192,10 +192,9 @@ local Window = WindUI:CreateWindow({
     },
 })
 
--- สร้าง ConfigManager ของ WindUI
-local ConfigManager = Window:ConfigManager({
-    Directory = "WindUI",
-})
+-- อ้างอิง ConfigManager และสร้าง Config File ตาม Doc
+local ConfigManager = Window.ConfigManager
+local myConfig = ConfigManager:CreateConfig("config")
 
 local LobbyTab = Window:Tab({
     Title = "Lobby",
@@ -218,10 +217,10 @@ LobbyTab:Dropdown({
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
     Default = selectedMap,
-    Flag = "SelectedMap",
+    Flag = "SelectedMap", -- กำหนด Flag ให้เซฟลง Config ได้
     Callback = function(value)
         selectedMap = value
-        ConfigManager:Save("config")
+        myConfig:Save() -- สั่งเซฟทันทีเมื่อแก้ไข
     end
 })
 
@@ -232,7 +231,7 @@ LobbyTab:Dropdown({
     Flag = "SelectedDifficulty",
     Callback = function(value)
         selectedDifficulty = value
-        ConfigManager:Save("config")
+        myConfig:Save() -- สั่งเซฟทันทีเมื่อแก้ไข
     end
 })
 
@@ -242,7 +241,7 @@ LobbyTab:Toggle({
     Flag = "AutoCreateAndStart",
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
-        ConfigManager:Save("config")
+        myConfig:Save() -- สั่งเซฟทันทีเมื่อแก้ไข
     end
 })
 
@@ -265,7 +264,7 @@ DungeonTab:Toggle({
     Flag = "AutoFarmEnabled",
     Callback = function(State)
         getgenv().AutoFarmEnabled = State
-        ConfigManager:Save("config")
+        myConfig:Save() -- สั่งเซฟทันทีเมื่อแก้ไข
 
         if State then
             startFarm()
@@ -275,9 +274,9 @@ DungeonTab:Toggle({
     end
 })
 
--- โหลด Config กลับเข้า UI อัตโนมัติ (จะสร้างไฟล์ WindUI/config.json ให้เอง)
+-- โหลดค่าเดิมจากไฟล์ตาม Doc
 pcall(function()
-    ConfigManager:Load("config")
+    myConfig:Load()
 end)
 
 -- ================= Loops & Execution =================
@@ -323,3 +322,4 @@ if game.PlaceId ~= TARGET_PLACE_ID then
         end
     end)
 end
+
