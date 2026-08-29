@@ -192,11 +192,21 @@ local Window = WindUI:CreateWindow({
     },
 })
 
--- สร้าง ConfigManager ของ WindUI
+-- ================= สร้าง ConfigManager และ Config Instance =================
 local ConfigManager = Window:ConfigManager({
     Directory = "WindUI",
 })
 
+-- สร้าง Instance ของ Config ชื่อ "config"
+local myConfig = ConfigManager:CreateConfig("config")
+
+-- ลงทะเบียน Flag ทั้งหมดที่ต้องการให้จำค่า
+myConfig:Register("SelectedMap", { Type = "Dropdown" })
+myConfig:Register("SelectedDifficulty", { Type = "Dropdown" })
+myConfig:Register("AutoCreateAndStart", { Type = "Toggle" })
+myConfig:Register("AutoFarmEnabled", { Type = "Toggle" })
+
+-- ================= สร้าง UI Tabs =================
 local LobbyTab = Window:Tab({
     Title = "Lobby",
     Icon = "house",
@@ -221,7 +231,7 @@ LobbyTab:Dropdown({
     Flag = "SelectedMap",
     Callback = function(value)
         selectedMap = value
-        ConfigManager:SaveConfig("config")  -- แก้จาก Save เป็น SaveConfig
+        myConfig:Save()
     end
 })
 
@@ -232,7 +242,7 @@ LobbyTab:Dropdown({
     Flag = "SelectedDifficulty",
     Callback = function(value)
         selectedDifficulty = value
-        ConfigManager:SaveConfig("config")  -- แก้จาก Save เป็น SaveConfig
+        myConfig:Save()
     end
 })
 
@@ -242,7 +252,7 @@ LobbyTab:Toggle({
     Flag = "AutoCreateAndStart",
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
-        ConfigManager:SaveConfig("config")  -- แก้จาก Save เป็น SaveConfig
+        myConfig:Save()
     end
 })
 
@@ -265,7 +275,7 @@ DungeonTab:Toggle({
     Flag = "AutoFarmEnabled",
     Callback = function(State)
         getgenv().AutoFarmEnabled = State
-        ConfigManager:SaveConfig("config")  -- แก้จาก Save เป็น SaveConfig
+        myConfig:Save()
 
         if State then
             startFarm()
@@ -275,9 +285,15 @@ DungeonTab:Toggle({
     end
 })
 
--- โหลด Config กลับเข้า UI อัตโนมัติ (แก้จาก Load เป็น LoadConfig)
+-- ================= โหลด Config อัตโนมัติ =================
 pcall(function()
-    ConfigManager:LoadConfig("config")
+    myConfig:Load()
+    
+    -- อัปเดตค่าตัวแปรหลังจากโหลด
+    selectedMap = myConfig:GetValue("SelectedMap") or selectedMap
+    selectedDifficulty = myConfig:GetValue("SelectedDifficulty") or selectedDifficulty
+    getgenv().AutoCreateAndStart = myConfig:GetValue("AutoCreateAndStart") or false
+    getgenv().AutoFarmEnabled = myConfig:GetValue("AutoFarmEnabled") or false
 end)
 
 -- ================= Loops & Execution =================
