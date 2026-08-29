@@ -1,5 +1,5 @@
 local TARGET_PLACE_ID = 77649408247578
-local CONFIG_FOLDER = "MyGhostHub"
+local CONFIG_FOLDER = "GhostXHub"
 local CONFIG_FILE = CONFIG_FOLDER .. "/config.json"
 
 local selectedMap = "Desert Temple"
@@ -38,19 +38,20 @@ end
 local function loadConfig()
     local success, result = pcall(function()
         if isfile(CONFIG_FILE) then
-            return HttpService:JSONDecode(readfile(CONFIG_FILE))
+            return HttpService:JSONEncode(readfile(CONFIG_FILE))
         end
         return nil
     end)
 
     if success and result then
-        if result.selectedMap then selectedMap = result.selectedMap end
-        if result.selectedDifficulty then selectedDifficulty = result.selectedDifficulty end
-        if result.AutoCreateAndStart \~= nil then getgenv().AutoCreateAndStart = result.AutoCreateAndStart end
-        if result.AutoFarmEnabled \~= nil then getgenv().AutoFarmEnabled = result.AutoFarmEnabled end
+        if result.selectedMap ~= nil then selectedMap = result.selectedMap end
+        if result.selectedDifficulty ~= nil then selectedDifficulty = result.selectedDifficulty end
+        if result.AutoCreateAndStart ~= nil then getgenv().AutoCreateAndStart = result.AutoCreateAndStart end
+        if result.AutoFarmEnabled ~= nil then getgenv().AutoFarmEnabled = result.AutoFarmEnabled end
     end
 end
 
+-- โหลดค่าตั้งต้นจากไฟล์ Config ก่อนสร้าง UI
 loadConfig()
 
 local function pressKey(keyStr)
@@ -112,7 +113,7 @@ local function startFarm()
         local scanArea = workspace:FindFirstChild("dungeon") or workspace
 
         for _, obj in ipairs(scanArea:GetDescendants()) do
-            if obj:IsA("Model") and obj \~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local hum = obj:FindFirstChild("Humanoid")
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
@@ -206,13 +207,14 @@ local function startFarm()
     end)
 end
 
+-- สร้าง UI
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 local Window = WindUI:CreateWindow({
     Title = "Ghost Hub",
     Icon = "ghost",
     Author = "by .TiM",
-    Folder = "MyGhostHub",
+    Folder = CONFIG_FOLDER,
     Size = UDim2.fromOffset(580, 460),
     MinSize = Vector2.new(560, 350),
     MaxSize = Vector2.new(850, 560),
@@ -251,7 +253,7 @@ LobbyTab:Dropdown({
         "Ghastly Harbor", "Steampunk Sewers", "Orbital Outpost", "Volcanic Chambers",
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
-    Default = selectedMap,
+    Value = selectedMap, -- อัปเดตให้แสดงผลค่าปัจจุบันที่โหลดมา
     Callback = function(value)
         selectedMap = value
         saveConfig()
@@ -261,16 +263,16 @@ LobbyTab:Dropdown({
 LobbyTab:Dropdown({
     Title = "Difficulty Selection",
     Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
-    Default = selectedDifficulty,
+    Value = selectedDifficulty, -- อัปเดตให้แสดงผลค่าปัจจุบันที่โหลดมา
     Callback = function(value)
         selectedDifficulty = value
         saveConfig()
     end
 })
 
-LobbyTab:Toggle({
+local AutoStartToggle = LobbyTab:Toggle({
     Title = "AutoStart",
-    Default = getgenv().AutoCreateAndStart,
+    Value = getgenv().AutoCreateAndStart, -- เปลี่ยน Default เป็น Value เพื่อ Force สถานะปุ่ม
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
         saveConfig()
@@ -289,10 +291,10 @@ DungeonTab:Section({
     TextSize = 16,
 })
 
-DungeonTab:Toggle({
+local AutoFarmToggle = DungeonTab:Toggle({
     Title = "Auto Farm",
     Desc = "Auto Farm Dungeon & Boss Dodge",
-    Default = getgenv().AutoFarmEnabled,
+    Value = getgenv().AutoFarmEnabled, -- เปลี่ยน Default เป็น Value เพื่อ Force สถานะปุ่ม
     Callback = function(State)
         getgenv().AutoFarmEnabled = State
         saveConfig()
@@ -305,11 +307,12 @@ DungeonTab:Toggle({
     end
 })
 
+-- ลูปการทำงานใน Lobby
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
             pcall(function()
-                if game.PlaceId \~= TARGET_PLACE_ID then return end
+                if game.PlaceId ~= TARGET_PLACE_ID then return end
 
                 local remotes = ReplicatedStorage:WaitForChild("remotes", 5)
                 if not remotes then return end
@@ -340,6 +343,11 @@ task.spawn(function()
     end
 end)
 
-if getgenv().AutoFarmEnabled and game.PlaceId \~= TARGET_PLACE_ID then
-    task.defer(startFarm)
+-- ควบคุมการเริ่มฟาร์มแบบอัตโนมัติเมื่อวาร์ปเข้าด่าน
+if game.PlaceId ~= TARGET_PLACE_ID then
+    task.defer(function()
+        if getgenv().AutoFarmEnabled then
+            startFarm()
+        end
+    end)
 end
