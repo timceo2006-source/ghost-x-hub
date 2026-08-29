@@ -111,12 +111,12 @@ task.spawn(function()
                         false
                     }
                     createLobbyRemote:InvokeServer(unpack(args))
-                    task.wait(2)
+                    task.wait(1)
                 end
 
                 if startDungeonRemote then
                     startDungeonRemote:FireServer()
-                    task.wait(3)
+                    task.wait(1)
                 end
             end)
         end
