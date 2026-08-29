@@ -83,7 +83,6 @@ Tab:Dropdown({
 Tab:Toggle({
     Title = "Auto Start Dungeon",
     Default = false,
-    Enabled = false,
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
     end
@@ -120,4 +119,6 @@ task.spawn(function()
                 end
             end)
         end
-        task.waitDifficulty
+        task.wait(2)
+    end
+end)
