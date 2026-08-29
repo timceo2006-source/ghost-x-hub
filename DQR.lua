@@ -31,7 +31,7 @@ local Tab = Window:Tab({
 })
 
 local Section = Tab:Section({
-    Title = "Start Farm",
+    Title = "Auto Start Dungeon",
     TextXAlignment = "Left",
     TextSize = 16,
 })
@@ -81,8 +81,8 @@ Tab:Dropdown({
 })
 
 Tab:Toggle({
-    Title = "Auto Start Dungeon",
-    Default = false,
+    Title = "AutoStart",
+    Default = Auto
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
     end
