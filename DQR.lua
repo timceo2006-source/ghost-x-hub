@@ -122,3 +122,19 @@ task.spawn(function()
         task.wait(2)
     end
 end)
+
+
+local Section = Window:Section({
+    Title = "Dungeon",
+    Icon = "bow-arrow",
+    Opened = true,
+})
+
+local Button = Tab:Button({
+    Title = "Auto Farm",
+    Desc = "Auto Farm Dungeon",
+    Locked = false,
+    Callback = function()
+        -- ...
+    end
+})
