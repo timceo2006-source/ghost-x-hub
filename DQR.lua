@@ -194,7 +194,8 @@ local Window = WindUI:CreateWindow({
 
 -- อ้างอิง ConfigManager และสร้าง Config File ตาม Doc
 local ConfigManager = Window.ConfigManager
-local myConfig = ConfigManager:CreateConfig("config")
+local myConfig = ConfigManager:CreateConfig("config", true)
+
 
 
 local LobbyTab = Window:Tab({
@@ -278,7 +279,12 @@ DungeonTab:Toggle({
 -- โหลดค่าเดิมจากไฟล์ตาม Doc
 pcall(function()
     myConfig:Load()
+    selectedMap = Window.Flags["SelectedMap"] and Window.Flags["SelectedMap"].Value or selectedMap
+    selectedDifficulty = Window.Flags["SelectedDifficulty"] and Window.Flags["SelectedDifficulty"].Value or selectedDifficulty
+    getgenv().AutoCreateAndStart = Window.Flags["AutoCreateAndStart"] and Window.Flags["AutoCreateAndStart"].Value or getgenv().AutoCreateAndStart
+    getgenv().AutoFarmEnabled = Window.Flags["AutoFarmEnabled"] and Window.Flags["AutoFarmEnabled"].Value or getgenv().AutoFarmEnabled
 end)
+
 
 -- ================= Loops & Execution =================
 task.spawn(function()
