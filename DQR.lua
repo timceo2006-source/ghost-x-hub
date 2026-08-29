@@ -1,6 +1,4 @@
 local TARGET_PLACE_ID = 77649408247578
-local CONFIG_FOLDER = "WindUI"
-local CONFIG_FILE = CONFIG_FOLDER .. "/config.json"
 
 local selectedMap = "Desert Temple"
 local selectedDifficulty = "Insane"
@@ -13,46 +11,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local HttpService = game:GetService("HttpService")
 local LocalPlayer = Players.LocalPlayer
-
-local function ensureFolder()
-    if not isfolder(CONFIG_FOLDER) then
-        makefolder(CONFIG_FOLDER)
-    end
-end
-
-local function saveConfig()
-    pcall(function()
-        ensureFolder()
-        local data = {
-            selectedMap = selectedMap,
-            selectedDifficulty = selectedDifficulty,
-            AutoCreateAndStart = getgenv().AutoCreateAndStart,
-            AutoFarmEnabled = getgenv().AutoFarmEnabled
-        }
-        writefile(CONFIG_FILE, HttpService:JSONEncode(data))
-    end)
-end
-
-local function loadConfig()
-    local success, result = pcall(function()
-        if isfile(CONFIG_FILE) then
-            return HttpService:JSONEncode(readfile(CONFIG_FILE))
-        end
-        return nil
-    end)
-
-    if success and result then
-        if result.selectedMap ~= nil then selectedMap = result.selectedMap end
-        if result.selectedDifficulty ~= nil then selectedDifficulty = result.selectedDifficulty end
-        if result.AutoCreateAndStart ~= nil then getgenv().AutoCreateAndStart = result.AutoCreateAndStart end
-        if result.AutoFarmEnabled ~= nil then getgenv().AutoFarmEnabled = result.AutoFarmEnabled end
-    end
-end
-
--- โหลดค่าจาก Config เข้าตัวแปรก่อนสร้าง UI
-loadConfig()
 
 local function pressKey(keyStr)
     local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
@@ -207,14 +166,14 @@ local function startFarm()
     end)
 end
 
--- สร้าง UI
+-- ================= WindUI Setup =================
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 local Window = WindUI:CreateWindow({
     Title = "Ghost Hub",
     Icon = "ghost",
     Author = "by .TiM",
-    Folder = CONFIG_FOLDER,
+    Folder = "WindUI",
     Size = UDim2.fromOffset(580, 460),
     MinSize = Vector2.new(560, 350),
     MaxSize = Vector2.new(850, 560),
@@ -233,6 +192,11 @@ local Window = WindUI:CreateWindow({
     },
 })
 
+-- สร้าง ConfigManager ของ WindUI
+local ConfigManager = Window:ConfigManager({
+    Directory = "WindUI",
+})
+
 local LobbyTab = Window:Tab({
     Title = "Lobby",
     Icon = "house",
@@ -245,8 +209,7 @@ LobbyTab:Section({
     TextSize = 16,
 })
 
--- เก็บตัวแปร UI Elements ไว้ใช้งาน
-local MapDropdown = LobbyTab:Dropdown({
+LobbyTab:Dropdown({
     Title = "Map Selected",
     Values = {
         "Egg Island", "Desert Temple", "Winter Outpost", "Pirate Island",
@@ -255,28 +218,31 @@ local MapDropdown = LobbyTab:Dropdown({
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
     Default = selectedMap,
+    Flag = "SelectedMap",
     Callback = function(value)
         selectedMap = value
-        saveConfig()
+        ConfigManager:Save("config")
     end
 })
 
-local DifficultyDropdown = LobbyTab:Dropdown({
+LobbyTab:Dropdown({
     Title = "Difficulty Selection",
     Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
     Default = selectedDifficulty,
+    Flag = "SelectedDifficulty",
     Callback = function(value)
         selectedDifficulty = value
-        saveConfig()
+        ConfigManager:Save("config")
     end
 })
 
-local AutoStartToggle = LobbyTab:Toggle({
+LobbyTab:Toggle({
     Title = "AutoStart",
     Default = getgenv().AutoCreateAndStart,
+    Flag = "AutoCreateAndStart",
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
-        saveConfig()
+        ConfigManager:Save("config")
     end
 })
 
@@ -292,13 +258,14 @@ DungeonTab:Section({
     TextSize = 16,
 })
 
-local AutoFarmToggle = DungeonTab:Toggle({
+DungeonTab:Toggle({
     Title = "Auto Farm",
     Desc = "Auto Farm Dungeon & Boss Dodge",
     Default = getgenv().AutoFarmEnabled,
+    Flag = "AutoFarmEnabled",
     Callback = function(State)
         getgenv().AutoFarmEnabled = State
-        saveConfig()
+        ConfigManager:Save("config")
 
         if State then
             startFarm()
@@ -308,17 +275,12 @@ local AutoFarmToggle = DungeonTab:Toggle({
     end
 })
 
--- บังคับเปลี่ยนหน้าตาปุ่ม/ดรอปดาวน์ บน UI ให้ตรงตามไฟล์ Config ที่โหลดมา
-task.defer(function()
-    pcall(function()
-        if MapDropdown and MapDropdown.Set then MapDropdown:Set(selectedMap) end
-        if DifficultyDropdown and DifficultyDropdown.Set then DifficultyDropdown:Set(selectedDifficulty) end
-        if AutoStartToggle and AutoStartToggle.Set then AutoStartToggle:Set(getgenv().AutoCreateAndStart) end
-        if AutoFarmToggle and AutoFarmToggle.Set then AutoFarmToggle:Set(getgenv().AutoFarmEnabled) end
-    end)
+-- โหลด Config กลับเข้า UI อัตโนมัติ (จะสร้างไฟล์ WindUI/config.json ให้เอง)
+pcall(function()
+    ConfigManager:Load("config")
 end)
 
--- ลูปการทำงานใน Lobby
+-- ================= Loops & Execution =================
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
@@ -354,7 +316,6 @@ task.spawn(function()
     end
 end)
 
--- ควบคุมการเริ่มฟาร์มอัตโนมัติเมื่อวาร์ปเปลี่ยนด่าน
 if game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(function()
         if getgenv().AutoFarmEnabled then
