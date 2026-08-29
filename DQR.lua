@@ -1,10 +1,48 @@
+-- ================= CONFIG SYSTEM =================
+local CONFIG_FOLDER = "GhostHub_Configs"
+local CONFIG_FILE = CONFIG_FOLDER .. "/settings.json"
+
+local HttpService = game:GetService("HttpService")
+
+-- ฟังก์ชันโหลด config
+local function LoadConfig()
+    local success, result = pcall(function()
+        if not isfolder(CONFIG_FOLDER) then
+            makefolder(CONFIG_FOLDER)
+        end
+        if isfile(CONFIG_FILE) then
+            return HttpService:JSONDecode(readfile(CONFIG_FILE))
+        end
+        return nil
+    end)
+    
+    if success and result then
+        return result
+    end
+    return nil
+end
+
+-- ฟังก์ชันเซฟ config
+local function SaveConfig(data)
+    pcall(function()
+        if not isfolder(CONFIG_FOLDER) then
+            makefolder(CONFIG_FOLDER)
+        end
+        writefile(CONFIG_FILE, HttpService:JSONEncode(data))
+    end)
+end
+
+-- ================= MAIN SCRIPT =================
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "Desert Temple"
-local selectedDifficulty = "Insane"
+-- โหลดค่า config เริ่มต้น
+local savedConfig = LoadConfig()
 
-getgenv().AutoCreateAndStart = false
-getgenv().AutoFarmEnabled = false
+local selectedMap = (savedConfig and savedConfig.selectedMap) or "Desert Temple"
+local selectedDifficulty = (savedConfig and savedConfig.selectedDifficulty) or "Insane"
+
+getgenv().AutoCreateAndStart = (savedConfig and savedConfig.AutoCreateAndStart) or false
+getgenv().AutoFarmEnabled = (savedConfig and savedConfig.AutoFarmEnabled) or false
 getgenv().DungeonFarmLoop = nil
 
 local Players = game:GetService("Players")
@@ -13,6 +51,17 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
+-- ฟังก์ชันรวมเซฟ config
+local function UpdateConfig()
+    SaveConfig({
+        selectedMap = selectedMap,
+        selectedDifficulty = selectedDifficulty,
+        AutoCreateAndStart = getgenv().AutoCreateAndStart,
+        AutoFarmEnabled = getgenv().AutoFarmEnabled
+    })
+end
+
+-- ================= FUNCTIONS =================
 local function pressKey(keyStr)
     local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
     if success and keyCode then
@@ -166,14 +215,14 @@ local function startFarm()
     end)
 end
 
--- ================= WindUI Setup =================
+-- ================= UI SETUP =================
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 local Window = WindUI:CreateWindow({
     Title = "Ghost Hub",
     Icon = "ghost",
     Author = "by .TiM",
-    Folder = "WindUI",
+    Folder = "GhostHub",
     Size = UDim2.fromOffset(580, 460),
     MinSize = Vector2.new(560, 350),
     MaxSize = Vector2.new(850, 560),
@@ -192,21 +241,7 @@ local Window = WindUI:CreateWindow({
     },
 })
 
--- ================= สร้าง ConfigManager และ Config Instance =================
-local ConfigManager = Window:ConfigManager({
-    Directory = "WindUI",
-})
-
--- สร้าง Instance ของ Config ชื่อ "config"
-local myConfig = ConfigManager:CreateConfig("config")
-
--- ลงทะเบียน Flag ทั้งหมดที่ต้องการให้จำค่า
-myConfig:Register("SelectedMap", { Type = "Dropdown" })
-myConfig:Register("SelectedDifficulty", { Type = "Dropdown" })
-myConfig:Register("AutoCreateAndStart", { Type = "Toggle" })
-myConfig:Register("AutoFarmEnabled", { Type = "Toggle" })
-
--- ================= สร้าง UI Tabs =================
+-- ================= TABS =================
 local LobbyTab = Window:Tab({
     Title = "Lobby",
     Icon = "house",
@@ -228,10 +263,9 @@ LobbyTab:Dropdown({
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
     Default = selectedMap,
-    Flag = "SelectedMap",
     Callback = function(value)
         selectedMap = value
-        myConfig:Save()
+        UpdateConfig()  -- เซฟ config เมื่อมีการเปลี่ยนค่า
     end
 })
 
@@ -239,20 +273,18 @@ LobbyTab:Dropdown({
     Title = "Difficulty Selection",
     Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
     Default = selectedDifficulty,
-    Flag = "SelectedDifficulty",
     Callback = function(value)
         selectedDifficulty = value
-        myConfig:Save()
+        UpdateConfig()  -- เซฟ config เมื่อมีการเปลี่ยนค่า
     end
 })
 
 LobbyTab:Toggle({
     Title = "AutoStart",
     Default = getgenv().AutoCreateAndStart,
-    Flag = "AutoCreateAndStart",
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
-        myConfig:Save()
+        UpdateConfig()  -- เซฟ config เมื่อมีการเปลี่ยนค่า
     end
 })
 
@@ -272,10 +304,9 @@ DungeonTab:Toggle({
     Title = "Auto Farm",
     Desc = "Auto Farm Dungeon & Boss Dodge",
     Default = getgenv().AutoFarmEnabled,
-    Flag = "AutoFarmEnabled",
     Callback = function(State)
         getgenv().AutoFarmEnabled = State
-        myConfig:Save()
+        UpdateConfig()  -- เซฟ config เมื่อมีการเปลี่ยนค่า
 
         if State then
             startFarm()
@@ -285,18 +316,7 @@ DungeonTab:Toggle({
     end
 })
 
--- ================= โหลด Config อัตโนมัติ =================
-pcall(function()
-    myConfig:Load()
-    
-    -- อัปเดตค่าตัวแปรหลังจากโหลด
-    selectedMap = myConfig:GetValue("SelectedMap") or selectedMap
-    selectedDifficulty = myConfig:GetValue("SelectedDifficulty") or selectedDifficulty
-    getgenv().AutoCreateAndStart = myConfig:GetValue("AutoCreateAndStart") or false
-    getgenv().AutoFarmEnabled = myConfig:GetValue("AutoFarmEnabled") or false
-end)
-
--- ================= Loops & Execution =================
+-- ================= LOOPS & EXECUTION =================
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
@@ -332,10 +352,12 @@ task.spawn(function()
     end
 end)
 
-if game.PlaceId ~= TARGET_PLACE_ID then
-    task.defer(function()
-        if getgenv().AutoFarmEnabled then
-            startFarm()
-        end
-    end)
+-- เริ่ม Auto Farm อัตโนมัติถ้าเปิดใช้งานอยู่
+if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
+    task.defer(startFarm)
 end
+
+print("[Ghost Hub] Loaded Successfully!")
+print("[Ghost Hub] Config: Map = " .. selectedMap .. ", Difficulty = " .. selectedDifficulty)
+print("[Ghost Hub] AutoStart = " .. tostring(getgenv().AutoCreateAndStart))
+print("[Ghost Hub] AutoFarm = " .. tostring(getgenv().AutoFarmEnabled))
