@@ -196,6 +196,7 @@ local Window = WindUI:CreateWindow({
 local ConfigManager = Window.ConfigManager
 local myConfig = ConfigManager:CreateConfig("config")
 
+
 local LobbyTab = Window:Tab({
     Title = "Lobby",
     Icon = "house",
