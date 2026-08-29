@@ -173,7 +173,7 @@ local Window = WindUI:CreateWindow({
     Title = "Ghost Hub",
     Icon = "ghost",
     Author = "by .TiM",
-    Folder = "MyGhostHub",
+    Folder = "WindUI",
     Size = UDim2.fromOffset(580, 460),
     MinSize = Vector2.new(560, 350),
     MaxSize = Vector2.new(850, 560),
@@ -192,9 +192,10 @@ local Window = WindUI:CreateWindow({
     },
 })
 
--- แก้ไข: ใช้ ConfigManager ตาม Document ป้องกัน UI บัค
-local ConfigManager = Window.ConfigManager
-local myConfig = ConfigManager:CreateConfig("config1")
+-- สร้าง ConfigManager ของ WindUI
+local ConfigManager = Window:ConfigManager({
+    Directory = "WindUI",
+})
 
 local LobbyTab = Window:Tab({
     Title = "Lobby",
@@ -220,7 +221,7 @@ LobbyTab:Dropdown({
     Flag = "SelectedMap",
     Callback = function(value)
         selectedMap = value
-        pcall(function() myConfig:Save() end)
+        ConfigManager:SaveConfig("config")  -- แก้จาก Save เป็น SaveConfig
     end
 })
 
@@ -231,7 +232,7 @@ LobbyTab:Dropdown({
     Flag = "SelectedDifficulty",
     Callback = function(value)
         selectedDifficulty = value
-        pcall(function() myConfig:Save() end)
+        ConfigManager:SaveConfig("config")  -- แก้จาก Save เป็น SaveConfig
     end
 })
 
@@ -241,7 +242,7 @@ LobbyTab:Toggle({
     Flag = "AutoCreateAndStart",
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
-        pcall(function() myConfig:Save() end)
+        ConfigManager:SaveConfig("config")  -- แก้จาก Save เป็น SaveConfig
     end
 })
 
@@ -264,7 +265,7 @@ DungeonTab:Toggle({
     Flag = "AutoFarmEnabled",
     Callback = function(State)
         getgenv().AutoFarmEnabled = State
-        pcall(function() myConfig:Save() end)
+        ConfigManager:SaveConfig("config")  -- แก้จาก Save เป็น SaveConfig
 
         if State then
             startFarm()
@@ -274,14 +275,9 @@ DungeonTab:Toggle({
     end
 })
 
--- โหลดค่าเดิมเข้าตัวแปร
+-- โหลด Config กลับเข้า UI อัตโนมัติ (แก้จาก Load เป็น LoadConfig)
 pcall(function()
-    myConfig:Load()
-    task.wait(0.1)
-    if Window.Flags["SelectedMap"] then selectedMap = Window.Flags["SelectedMap"].Value end
-    if Window.Flags["SelectedDifficulty"] then selectedDifficulty = Window.Flags["SelectedDifficulty"].Value end
-    if Window.Flags["AutoCreateAndStart"] then getgenv().AutoCreateAndStart = Window.Flags["AutoCreateAndStart"].Value end
-    if Window.Flags["AutoFarmEnabled"] then getgenv().AutoFarmEnabled = Window.Flags["AutoFarmEnabled"].Value end
+    ConfigManager:LoadConfig("config")
 end)
 
 -- ================= Loops & Execution =================
