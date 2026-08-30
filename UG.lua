@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
 local selectedMap = "Pirate Island"
-local selectedDifficulty = "Insane"
+local selectedDifficulty = "Nightmare"
 
 -- ตั้งค่าสถานะเริ่มต้น (ฟาร์มเปิดอยู่, ออโต้เข้าห้องปิดอยู่)
 getgenv().AutoCreateAndStart = true
