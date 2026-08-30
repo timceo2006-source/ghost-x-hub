@@ -9,6 +9,7 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
+-- ================= CONFIG SYSTEM (บันทึก/โหลด JSON ภายนอก) =================
 local ConfigData = {
     SelectedMap = "Desert Temple",
     SelectedDifficulty = "Insane",
@@ -41,8 +42,10 @@ local function LoadConfig()
     end)
 end
 
+-- โหลดค่าเดิมขึ้นมาก่อนสร้าง UI
 LoadConfig()
 
+-- ================= FUNCTIONS =================
 local function pressKey(keyStr)
     local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
     if success and keyCode then
@@ -102,7 +105,7 @@ local function startFarm()
         local scanArea = workspace:FindFirstChild("dungeon") or workspace
 
         for _, obj in ipairs(scanArea:GetDescendants()) do
-            if obj:IsA("Model") and obj \~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local hum = obj:FindFirstChild("Humanoid")
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
@@ -196,6 +199,7 @@ local function startFarm()
     end)
 end
 
+-- ================= UI SETUP =================
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 local Window = WindUI:CreateWindow({
@@ -221,8 +225,10 @@ local Window = WindUI:CreateWindow({
     },
 })
 
+-- ตัวแปรอ้างอิง UI สำหรับเซ็ตค่าเริ่มต้น
 local MapDropdown, DiffDropdown, AutoStartToggle, AutoFarmToggle
 
+-- ================= TABS =================
 local LobbyTab = Window:Tab({
     Title = "Lobby",
     Icon = "house",
@@ -297,11 +303,12 @@ AutoFarmToggle = DungeonTab:Toggle({
     end
 })
 
+-- ================= LOOPS =================
 task.spawn(function()
     while true do
         if ConfigData.AutoCreateAndStart then
             pcall(function()
-                if game.PlaceId \~= TARGET_PLACE_ID then return end
+                if game.PlaceId ~= TARGET_PLACE_ID then return end
 
                 local remotes = ReplicatedStorage:WaitForChild("remotes", 5)
                 if not remotes then return end
@@ -332,6 +339,6 @@ task.spawn(function()
     end
 end)
 
-if ConfigData.AutoFarmEnabled and game.PlaceId \~= TARGET_PLACE_ID then
+if ConfigData.AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
