@@ -4,7 +4,7 @@ local selectedMap = "Pirate Island"
 local selectedDifficulty = "Insane"
 
 -- ตั้งค่าสถานะเริ่มต้น (ฟาร์มเปิดอยู่, ออโต้เข้าห้องปิดอยู่)
-getgenv().AutoCreateAndStart = false
+getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
 
