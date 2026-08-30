@@ -1,77 +1,216 @@
--- ================= CONFIG SYSTEM =================
-local CONFIG_FOLDER = "GhostHub_Configs"
+local TARGET_PLACE_ID = 77649408247578
+local CONFIG_FOLDER = "GhostHub"
 local CONFIG_FILE = CONFIG_FOLDER .. "/settings.json"
 
 local HttpService = game:GetService("HttpService")
-
--- ฟังก์ชันโหลด config
-local function LoadConfig()
-    local success, result = pcall(function()
-        if not isfolder(CONFIG_FOLDER) then
-            makefolder(CONFIG_FOLDER)
-        end
-        if isfile(CONFIG_FILE) then
-            return HttpService:JSONDecode(readfile(CONFIG_FILE))
-        end
-        return nil
-    end)
-    
-    if success and result then
-        return result
-    end
-    return nil
-end
-
--- ฟังก์ชันเซฟ config
-local function SaveConfig(data)
-    pcall(function()
-        if not isfolder(CONFIG_FOLDER) then
-            makefolder(CONFIG_FOLDER)
-        end
-        writefile(CONFIG_FILE, HttpService:JSONEncode(data))
-    end)
-end
-
--- ================= MAIN SCRIPT =================
-local TARGET_PLACE_ID = 77649408247578
-
--- โหลดค่า config เริ่มต้น
-local savedConfig = LoadConfig()
-
--- กำหนดค่าเริ่มต้นด้วย Default Values ที่ปลอดภัย
-local defaultConfig = {
-    selectedMap = "Desert Temple",
-    selectedDifficulty = "Insane",
-    AutoCreateAndStart = false,
-    AutoFarmEnabled = false
-}
-
--- ใช้ค่าจาก config หรือค่าเริ่มต้น (ป้องกัน nil)
-local selectedMap = (savedConfig and savedConfig.selectedMap) or defaultConfig.selectedMap
-local selectedDifficulty = (savedConfig and savedConfig.selectedDifficulty) or defaultConfig.selectedDifficulty
-
-getgenv().AutoCreateAndStart = (savedConfig and savedConfig.AutoCreateAndStart) ~= nil and savedConfig.AutoCreateAndStart or defaultConfig.AutoCreateAndStart
-getgenv().AutoFarmEnabled = (savedConfig and savedConfig.AutoFarmEnabled) ~= nil and savedConfig.AutoFarmEnabled or defaultConfig.AutoFarmEnabled
-getgenv().DungeonFarmLoop = nil
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
--- ฟังก์ชันรวมเซฟ config
-local function UpdateConfig()
+-- ฟังก์ชันจัดการโฟลเดอร์ Config
+local function ensureFolder()
+    if not isfolder(CONFIG_FOLDER) then
+        makefolder(CONFIG_FOLDER)
+    end
+end
+
+-- ฟังก์ชันบันทึก Config
+local function SaveConfig(data)
+    pcall(function()
+        ensureFolder()
+        writefile(CONFIG_FILE, HttpService:JSONEncode(data))
+    end)
+end
+
+-- ฟังก์ชันโหลด Config
+local function LoadConfig()
+    local success, result = pcall(function()
+        if isfile(CONFIG_FILE) then
+            return HttpService:JSONDecode(readfile(CONFIG_FILE))
+        end
+        return nil
+    end)
+    if success and result then
+        return result
+    end
+    return nil
+end
+
+-- โหลดข้อมูลที่เคยเซฟไว้
+local savedData = LoadConfig()
+
+local selectedMap = savedData and savedData.selectedMap or "Desert Temple"
+local selectedDifficulty = savedData and savedData.selectedDifficulty or "Insane"
+
+getgenv().AutoCreateAndStart = savedData and savedData.AutoCreateAndStart or false
+getgenv().AutoFarmEnabled = savedData and savedData.AutoFarmEnabled or false
+getgenv().DungeonFarmLoop = nil
+
+-- ฟังก์ชันอัปเดตและเซฟค่าลงไฟล์ทันที
+local function UpdateAndSave()
     SaveConfig({
-        selectedMap = selectedMap or "Desert Temple",
-        selectedDifficulty = selectedDifficulty or "Insane",
-        AutoCreateAndStart = getgenv().AutoCreateAndStart or false,
-        AutoFarmEnabled = getgenv().AutoFarmEnabled or false
+        selectedMap = selectedMap,
+        selectedDifficulty = selectedDifficulty,
+        AutoCreateAndStart = getgenv().AutoCreateAndStart,
+        AutoFarmEnabled = getgenv().AutoFarmEnabled
     })
 end
 
 -- ================= FUNCTIONS =================
--- ... (ฟังก์ชันอื่นๆ เหมือนเดิม) ...
+local function pressKey(keyStr)
+    local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
+    if success and keyCode then
+        task.spawn(function()
+            VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+            task.wait(0.02)
+            VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+        end)
+    end
+end
+
+local function tryStartGame()
+    pcall(function()
+        local remotes = ReplicatedStorage:FindFirstChild("remotes")
+        if remotes then
+            local changeStartValue = remotes:FindFirstChild("changeStartValue")
+            if changeStartValue and changeStartValue:IsA("RemoteEvent") then
+                changeStartValue:FireServer()
+            end
+        end
+    end)
+end
+
+local function stopFarm()
+    if getgenv().DungeonFarmLoop then
+        getgenv().DungeonFarmLoop:Disconnect()
+        getgenv().DungeonFarmLoop = nil
+    end
+end
+
+local function startFarm()
+    if game.PlaceId == TARGET_PLACE_ID then
+        warn("[AutoFarm] ไม่สามารถใช้งานระบบฟาร์มในห้อง Lobby ได้!")
+        return
+    end
+
+    stopFarm()
+
+    local currentTarget = nil
+    local lastSkillTime = 0
+    local lastFoundMonsterTime = tick()
+    local isDodgingBoss = false
+
+    local function getTarget()
+        if currentTarget and currentTarget.Parent then
+            local hum = currentTarget:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    lastFoundMonsterTime = tick()
+                    return hrp
+                end
+            end
+        end
+
+        currentTarget = nil
+        local scanArea = workspace:FindFirstChild("dungeon") or workspace
+
+        for _, obj in ipairs(scanArea:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+                local hum = obj:FindFirstChild("Humanoid")
+                local hrp = obj:FindFirstChild("HumanoidRootPart")
+
+                if hum and hrp and hum.Health > 0 then
+                    currentTarget = obj
+                    hrp.Size = Vector3.new(25, 25, 25)
+                    hrp.Transparency = 0.8
+                    hrp.CanCollide = false
+                    lastFoundMonsterTime = tick()
+                    return hrp
+                end
+            end
+        end
+        return nil
+    end
+
+    getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
+        if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
+
+        pcall(function()
+            local char = LocalPlayer.Character
+            if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
+
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+
+            for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+
+            local targetHrp = getTarget()
+            if targetHrp then
+                local safeHeight = 12
+                if workspace:FindFirstChild("bossShot") then
+                    safeHeight = 50
+                    isDodgingBoss = true
+                else
+                    isDodgingBoss = false
+                end
+                local safePos = targetHrp.Position + Vector3.new(0, safeHeight, 0)
+                hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
+            else
+                isDodgingBoss = false
+                if tick() - lastFoundMonsterTime > 1.5 then
+                    tryStartGame()
+                end
+            end
+        end)
+    end)
+
+    task.spawn(function()
+        while getgenv().AutoFarmEnabled do
+            task.wait(0.05)
+            pcall(function()
+                if game.PlaceId == TARGET_PLACE_ID then return end
+                local char = LocalPlayer.Character
+                if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
+
+                local targetHrp = getTarget()
+                if not targetHrp or isDodgingBoss then return end
+
+                if tick() - lastSkillTime > 0.15 then
+                    local items = {}
+                    if LocalPlayer:FindFirstChild("Backpack") then
+                        for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
+                    end
+                    for _, v in ipairs(char:GetChildren()) do table.insert(items, v) end
+
+                    for _, item in ipairs(items) do
+                        if item:IsA("Tool") then
+                            local slot = item:FindFirstChild("abilitySlot")
+                            local cd = item:FindFirstChild("cooldown")
+                            if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
+                                if cd.Value <= 0.1 then
+                                    pressKey(tostring(slot.Value))
+                                    lastSkillTime = tick()
+                                    return
+                                end
+                            end
+                        end
+                    end
+                end
+
+                local equippedTool = char:FindFirstChildOfClass("Tool")
+                if equippedTool then
+                    equippedTool:Activate()
+                end
+            end)
+        end
+    end)
+end
 
 -- ================= UI SETUP =================
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
@@ -112,7 +251,6 @@ LobbyTab:Section({
     TextSize = 16,
 })
 
--- เพิ่ม Flag ให้กับ Dropdown เพื่อให้ WindUI จัดการค่าได้
 LobbyTab:Dropdown({
     Title = "Map Selected",
     Values = {
@@ -122,10 +260,9 @@ LobbyTab:Dropdown({
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
     Default = selectedMap,
-    Flag = "SelectedMap",  -- เพิ่ม Flag
     Callback = function(value)
         selectedMap = value
-        UpdateConfig()
+        UpdateAndSave()
     end
 })
 
@@ -133,27 +270,25 @@ LobbyTab:Dropdown({
     Title = "Difficulty Selection",
     Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
     Default = selectedDifficulty,
-    Flag = "SelectedDifficulty",  -- เพิ่ม Flag
     Callback = function(value)
         selectedDifficulty = value
-        UpdateConfig()
+        UpdateAndSave()
     end
 })
 
 LobbyTab:Toggle({
     Title = "AutoStart",
     Default = getgenv().AutoCreateAndStart,
-    Flag = "AutoCreateAndStart",  -- เพิ่ม Flag
     Callback = function(Value)
         getgenv().AutoCreateAndStart = Value
-        UpdateConfig()
+        UpdateAndSave()
     end
 })
 
 local DungeonTab = Window:Tab({
     Title = "Dungeon",
     Icon = "bow-arrow",
-    Locked = false,
+    Locked, false,
 })
 
 DungeonTab:Section({
@@ -166,10 +301,9 @@ DungeonTab:Toggle({
     Title = "Auto Farm",
     Desc = "Auto Farm Dungeon & Boss Dodge",
     Default = getgenv().AutoFarmEnabled,
-    Flag = "AutoFarmEnabled",  -- เพิ่ม Flag
     Callback = function(State)
         getgenv().AutoFarmEnabled = State
-        UpdateConfig()
+        UpdateAndSave()
 
         if State then
             startFarm()
@@ -194,8 +328,8 @@ task.spawn(function()
 
                 if createLobbyRemote then
                     local args = {
-                        selectedMap or "Desert Temple",
-                        selectedDifficulty or "Insane",
+                        selectedMap,
+                        selectedDifficulty,
                         0,
                         false,
                         false,
@@ -215,16 +349,7 @@ task.spawn(function()
     end
 end)
 
--- เริ่ม Auto Farm อัตโนมัติถ้าเปิดใช้งานอยู่
+-- ถ้าวาร์ปเข้าไปในดันเจี้ยนแล้ว Auto Farm เปิดค้างไว้ ให้รันต่อทันที
 if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
-
--- ================= PRINT STATUS (แก้ไขแล้ว) =================
--- ใช้ tostring เพื่อป้องกัน error และใช้ fallback values
-print("[Ghost Hub] Loaded Successfully!")
-print(string.format("[Ghost Hub] Config: Map = %s, Difficulty = %s", 
-    tostring(selectedMap or "Desert Temple"), 
-    tostring(selectedDifficulty or "Insane")))
-print("[Ghost Hub] AutoStart = " .. tostring(getgenv().AutoCreateAndStart or false))
-print("[Ghost Hub] AutoFarm = " .. tostring(getgenv().AutoFarmEnabled or false))
