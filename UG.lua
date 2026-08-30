@@ -1,8 +1,9 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "King's Castle" -- เปลี่ยนแมพเป็น King's Castle
-local selectedDifficulty = "Insane" -- เปลี่ยนระดับความยากเป็น Insane
+local selectedMap = "King's Castle"
+local selectedDifficulty = "Insane"
 
+-- ตั้งค่าให้เปิดทั้งฟาร์มและออโต้สร้างห้องตั้งแต่เริ่มรันสคริปต์
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
@@ -16,7 +17,7 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== สร้าง GUI ====================
+-- ==================== สร้าง GUI (มุมขวาบน) ====================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "DungeonFarmGui"
 screenGui.ResetOnSpawn = false
@@ -31,6 +32,7 @@ end
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 200, 0, 115)
+-- ตำแหน่งมุมขวาบน (ตามที่คุณวงในรูป)
 mainFrame.Position = UDim2.new(0.68, 0, 0.08, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 mainFrame.BorderSizePixel = 0
@@ -49,6 +51,7 @@ titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
+-- ข้อความแสดงสถานะเวลานับถอยหลัง
 local timerLabel = Instance.new("TextLabel")
 timerLabel.Size = UDim2.new(1, 0, 0, 20)
 timerLabel.Position = UDim2.new(0, 0, 0, 25)
@@ -101,11 +104,13 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
+-- ประกาศฟังก์ชันล่วงหน้า
 local startFarm, stopFarm
 
+-- ฟังก์ชันกดปุ่มเปิด/ปิดสคริปต์หลัก
 toggleButton.MouseButton1Click:Connect(function()
     getgenv().AutoFarmEnabled = not getgenv().AutoFarmEnabled
-    getgenv().AutoCreateAndStart = getgenv().AutoFarmEnabled 
+    getgenv().AutoCreateAndStart = getgenv().AutoFarmEnabled
     
     if getgenv().AutoFarmEnabled then
         toggleButton.Text = "Status: ON"
@@ -124,6 +129,7 @@ end)
 
 -- ==================== ระบบหลักของสคริปต์ ====================
 
+-- ระบบตรวจจับการโดนเตะหรือหลุดออกจากเกมเพื่อรีจอยอัตโนมัติ
 task.spawn(function()
     pcall(function()
         local errorPrompt = CoreGui:FindFirstChild("RobloxPromptGui", true)
@@ -131,6 +137,7 @@ task.spawn(function()
             errorPrompt.DescendantAdded:Connect(function(subChild)
                 if subChild.Name == "ErrorTitle" then
                     task.wait(2)
+                    print("[Auto Reconnect] ตรวจพบการถูกเตะหรือหลุดจากเกม กำลังรีจอย...")
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
                 end
             end)
@@ -179,6 +186,7 @@ end
 
 function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then return end
+
     stopFarm()
 
     local currentTarget = nil
@@ -199,6 +207,7 @@ function startFarm()
         end
 
         currentTarget = nil
+        -- ค้นหามอนสเตอร์รอบๆ ตัวใน Workspace เพื่อความเสถียรทุกแมพ
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local hum = obj:FindFirstChild("Humanoid")
@@ -295,6 +304,7 @@ function startFarm()
     end)
 end
 
+-- ระบบวนลูปสร้างห้องและเข้าดันเจี้ยนอัตโนมัติ (สลับทำงานระหว่าง Lobby และ Dungeon)
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
@@ -322,6 +332,7 @@ task.spawn(function()
                     end
 
                     if startDungeonRemote then
+                        -- นับถอยหลัง 5 วินาทีก่อนกดสตาร์ท
                         for i = 5, 1, -1 do
                             if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
                             timerLabel.Text = "Starting in: " .. i .. "s"
@@ -337,6 +348,7 @@ task.spawn(function()
                 end)
             else
                 timerLabel.Text = "In Dungeon / Farming"
+                -- ถ้าวาปเข้าดันเจี้ยนแล้วแต่ลูปฟาร์มยังไม่ทำงาน ให้สั่งเริ่มทำงานทันที
                 if not getgenv().DungeonFarmLoop then
                     task.defer(startFarm)
                 end
@@ -348,6 +360,7 @@ task.spawn(function()
     end
 end)
 
+-- เริ่มต้นระบบฟาร์มทันทีหากอยู่นอกดันเจี้ยนตั้งแต่รันสคริปต์
 if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
