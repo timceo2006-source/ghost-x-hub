@@ -3,7 +3,8 @@ local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "Pirate Island"
 local selectedDifficulty = "Insane"
 
-getgenv().AutoCreateAndStart = true
+-- ตั้งค่าสถานะเริ่มต้น (ฟาร์มเปิดอยู่, ออโต้เข้าห้องปิดอยู่)
+getgenv().AutoCreateAndStart = false
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
 
@@ -13,7 +14,101 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local TeleportService = game:GetService("TeleportService")
 local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
+
+-- ==================== สร้าง GUI ปุ่มเปิด-ปิด (แบบลากได้) ====================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DungeonFarmGui"
+screenGui.ResetOnSpawn = false
+if syn and syn.protect_gui then
+    syn.protect_gui(screenGui)
+    screenGui.Parent = CoreGui
+elseif gethui then
+    screenGui.Parent = gethui()
+else
+    screenGui.Parent = CoreGui
+end
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 180, 0, 90)
+mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 8)
+uiCorner.Parent = mainFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 30)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Dungeon Auto Farm"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 13
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.Parent = mainFrame
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0.9, 0, 0, 45)
+toggleButton.Position = UDim2.new(0.05, 0, 0.35, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.TextSize = 14
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.Text = "Status: ON"
+toggleButton.Parent = mainFrame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 6)
+btnCorner.Parent = toggleButton
+
+-- ระบบลาก GUI
+local dragging, dragInput, dragStart, startPos
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+mainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- ฟังก์ชันกดปุ่มเปิด/ปิดสคริปต์หลัก
+toggleButton.MouseButton1Click:Connect(function()
+    getgenv().AutoFarmEnabled = not getgenv().AutoFarmEnabled
+    getgenv().AutoCreateAndStart = getgenv().AutoFarmEnabled 
+    
+    if getgenv().AutoFarmEnabled then
+        toggleButton.Text = "Status: ON"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
+        task.defer(startFarm)
+    else
+        toggleButton.Text = "Status: OFF"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(205, 50, 50)
+        stopFarm()
+    end
+end)
+
+-- ==================== ระบบหลักของสคริปต์ ====================
 
 -- ระบบตรวจจับการโดนเตะหรือหลุดออกจากเกมเพื่อรีจอยอัตโนมัติ
 task.spawn(function()
@@ -30,7 +125,6 @@ task.spawn(function()
         end
     end)
     
-    -- เผื่อกรณีโดนเตะแล้วหน้าจอขึ้น Prompt ทันที
     while true do
         task.wait(5)
         pcall(function()
@@ -64,14 +158,14 @@ local function tryStartGame()
     end)
 end
 
-local function stopFarm()
+function stopFarm()
     if getgenv().DungeonFarmLoop then
         getgenv().DungeonFarmLoop:Disconnect()
         getgenv().DungeonFarmLoop = nil
     end
 end
 
-local function startFarm()
+function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then
         warn("[AutoFarm] ไม่สามารถใช้งานระบบฟาร์มในห้อง Lobby ได้!")
         return
@@ -134,7 +228,7 @@ local function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 12
+                local safeHeight = 18 -- ปรับความสูงขึ้นเป็น 18 เพื่อกันมอนสเตอร์ตีโดน
                 if workspace:FindFirstChild("bossShot") then
                     safeHeight = 50
                     isDodgingBoss = true
