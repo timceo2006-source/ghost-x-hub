@@ -1,10 +1,10 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "King's Castle"
-local selectedDifficulty = "Insane"
+local selectedMap = "Pirate Island"
+local selectedDifficulty = "Nightmare"
 
 getgenv().AutoCreateAndStart = true
-getgenv().Pirate = true
+getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
 
 local Players = game:GetService("Players")
@@ -16,7 +16,7 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== สร้าง GUI (ย้ายไปมุมขวาบนตามที่คุณวง) ====================
+-- ==================== สร้าง GUI ====================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "DungeonFarmGui"
 screenGui.ResetOnSpawn = false
@@ -31,7 +31,6 @@ end
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 200, 0, 115)
--- ปรับตำแหน่งให้อยู่มุมขวาบน (ห่างจากขอบขวาเล็กน้อย และอยู่ด้านบน)
 mainFrame.Position = UDim2.new(0.68, 0, 0.08, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 mainFrame.BorderSizePixel = 0
@@ -74,7 +73,7 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleButton
 
--- ระบบลาก GUI (ยังสามารถใช้นิ้วลากเปลี่ยนตำแหน่งเองได้ตามต้องการ)
+-- ระบบลาก GUI
 local dragging, dragInput, dragStart, startPos
 mainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -102,6 +101,9 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
+-- ประกาศฟังก์ชันล่วงหน้า
+local startFarm, stopFarm
+
 toggleButton.MouseButton1Click:Connect(function()
     getgenv().AutoFarmEnabled = not getgenv().AutoFarmEnabled
     getgenv().AutoCreateAndStart = getgenv().AutoFarmEnabled 
@@ -110,7 +112,9 @@ toggleButton.MouseButton1Click:Connect(function()
         toggleButton.Text = "Status: ON"
         toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
         timerLabel.Text = "Status: Ready"
-        task.defer(startFarm)
+        if game.PlaceId ~= TARGET_PLACE_ID then
+            task.defer(startFarm)
+        end
     else
         toggleButton.Text = "Status: OFF"
         toggleButton.BackgroundColor3 = Color3.fromRGB(205, 50, 50)
@@ -196,20 +200,22 @@ function startFarm()
         end
 
         currentTarget = nil
-        local scanArea = workspace:FindFirstChild("dungeon") or workspace
-
-        for _, obj in ipairs(scanArea:GetDescendants()) do
+        -- ค้นหามอนสเตอร์ทั่ว Workspace (รองรับทุกแมพไม่จำกัดแค่โฟลเดอร์ dungeon)
+        for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local hum = obj:FindFirstChild("Humanoid")
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                 if hum and hrp and hum.Health > 0 then
-                    currentTarget = obj
-                    hrp.Size = Vector3.new(25, 25, 25)
-                    hrp.Transparency = 0.8
-                    hrp.CanCollide = false
-                    lastFoundMonsterTime = tick()
-                    return hrp
+                    -- เช็คว่าเป็นมอนสเตอร์จริง (มีชื่อเลือดหรืออยู่ในโซนศัตรู)
+                    if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
+                        currentTarget = obj
+                        hrp.Size = Vector3.new(25, 25, 25)
+                        hrp.Transparency = 0.8
+                        hrp.CanCollide = false
+                        lastFoundMonsterTime = tick()
+                        return hrp
+                    end
                 end
             end
         end
@@ -252,10 +258,9 @@ function startFarm()
     end)
 
     task.spawn(function()
-        while getgenv().AutoFarmEnabled do
+        while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             task.wait(0.05)
             pcall(function()
-                if game.PlaceId == TARGET_PLACE_ID then return end
                 local char = LocalPlayer.Character
                 if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
 
@@ -293,50 +298,55 @@ function startFarm()
     end)
 end
 
+-- ลูปเช็คสถานะแยกส่วนระหว่าง Lobby และ Dungeon ให้ทำงานต่อเนื่องอัตโนมัติ
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
-            pcall(function()
-                if game.PlaceId ~= TARGET_PLACE_ID then 
-                    timerLabel.Text = "In Dungeon / Farming"
-                    return 
-                end
+            if game.PlaceId == TARGET_PLACE_ID then
+                -- อยู่หน้า Lobby : จัดการสร้างห้องและนับถอยหลังกดเริ่มเกม
+                pcall(function()
+                    timerLabel.Text = "Waiting for remotes..."
+                    local remotes = ReplicatedStorage:WaitForChild("remotes", 10)
+                    if not remotes then return end
 
-                timerLabel.Text = "Waiting for remotes..."
-                local remotes = ReplicatedStorage:WaitForChild("remotes", 10)
-                if not remotes then return end
+                    local createLobbyRemote = remotes:FindFirstChild("createLobby")
+                    local startDungeonRemote = remotes:FindFirstChild("startDungeon")
 
-                local createLobbyRemote = remotes:FindFirstChild("createLobby")
-                local startDungeonRemote = remotes:FindFirstChild("startDungeon")
-
-                if createLobbyRemote then
-                    timerLabel.Text = "Creating Lobby..."
-                    local args = {
-                        selectedMap,
-                        selectedDifficulty,
-                        0,
-                        false,
-                        false,
-                        false
-                    }
-                    createLobbyRemote:InvokeServer(unpack(args))
-                    task.wait(1.5)
-                end
-
-                if startDungeonRemote then
-                    for i = 5, 1, -1 do
-                        if not getgenv().AutoCreateAndStart then break end
-                        timerLabel.Text = "Starting in: " .. i .. "s"
-                        task.wait(1)
+                    if createLobbyRemote then
+                        timerLabel.Text = "Creating Lobby..."
+                        local args = {
+                            selectedMap,
+                            selectedDifficulty,
+                            0,
+                            false,
+                            false,
+                            false
+                        }
+                        createLobbyRemote:InvokeServer(unpack(args))
+                        task.wait(1.5)
                     end
-                    
-                    if getgenv().AutoCreateAndStart then
-                        timerLabel.Text = "Starting Game..."
-                        startDungeonRemote:FireServer()
-                        task.wait(2)
+
+                    if startDungeonRemote then
+                        for i = 5, 1, -1 do
+                            if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
+                            timerLabel.Text = "Starting in: " .. i .. "s"
+                            task.wait(1)
+                        end
+                        
+                        if getgenv().AutoCreateAndStart and game.PlaceId == TARGET_PLACE_ID then
+                            timerLabel.Text = "Starting Game..."
+                            startDungeonRemote:FireServer()
+                            task.wait(3)
+                        end
                     end
+                end)
+            else
+                -- อยู่ในดันเจี้ยน : สั่งรันระบบฟาร์มถ้ายังไม่ได้เปิด
+                timerLabel.Text = "In Dungeon / Farming"
+                if not getgenv().DungeonFarmLoop then
+                    task.defer(startFarm)
                 end
-            end)
+            end
         else
             timerLabel.Text = "Status: OFF"
         end
@@ -344,6 +354,7 @@ task.spawn(function()
     end
 end)
 
+-- เริ่มต้นทันทีถ้าเปิดมารอยู่นอก Lobby
 if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
