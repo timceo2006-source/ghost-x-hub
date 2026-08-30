@@ -1,9 +1,8 @@
 local TARGET_PLACE_ID = 77649408247578
 
 local selectedMap = "Pirate Island"
-local selectedDifficulty = "Nightmare" -- ความยาก Nightmare ตามต้องการ
+local selectedDifficulty = "Nightmare"
 
--- ตั้งค่าสถานะเริ่มต้นให้เปิดทำงานอัตโนมัติ
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
@@ -17,7 +16,7 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== สร้าง GUI พร้อมตัวนับเวลา ====================
+-- ==================== สร้าง GUI (ย้ายไปมุมขวาบนตามที่คุณวง) ====================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "DungeonFarmGui"
 screenGui.ResetOnSpawn = false
@@ -31,8 +30,9 @@ else
 end
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 200, 0, 115) -- ขยายกล่องให้พอดีกับข้อความบอกเวลา
-mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+mainFrame.Size = UDim2.new(0, 200, 0, 115)
+-- ปรับตำแหน่งให้อยู่มุมขวาบน (ห่างจากขอบขวาเล็กน้อย และอยู่ด้านบน)
+mainFrame.Position = UDim2.new(0.68, 0, 0.08, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 mainFrame.BorderSizePixel = 0
 mainFrame.Parent = screenGui
@@ -50,7 +50,6 @@ titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
--- ข้อความแสดงเวลาถอยหลัง / สถานะ
 local timerLabel = Instance.new("TextLabel")
 timerLabel.Size = UDim2.new(1, 0, 0, 20)
 timerLabel.Position = UDim2.new(0, 0, 0, 25)
@@ -75,7 +74,7 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleButton
 
--- ระบบลาก GUI
+-- ระบบลาก GUI (ยังสามารถใช้นิ้วลากเปลี่ยนตำแหน่งเองได้ตามต้องการ)
 local dragging, dragInput, dragStart, startPos
 mainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -103,7 +102,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- ฟังก์ชันกดปุ่มเปิด/ปิดสคริปต์หลัก
 toggleButton.MouseButton1Click:Connect(function()
     getgenv().AutoFarmEnabled = not getgenv().AutoFarmEnabled
     getgenv().AutoCreateAndStart = getgenv().AutoFarmEnabled 
@@ -123,7 +121,6 @@ end)
 
 -- ==================== ระบบหลักของสคริปต์ ====================
 
--- ระบบตรวจจับการโดนเตะหรือหลุดออกจากเกมเพื่อรีจอยอัตโนมัติ
 task.spawn(function()
     pcall(function()
         local errorPrompt = CoreGui:FindFirstChild("RobloxPromptGui", true)
@@ -131,7 +128,6 @@ task.spawn(function()
             errorPrompt.DescendantAdded:Connect(function(subChild)
                 if subChild.Name == "ErrorTitle" then
                     task.wait(2)
-                    print("[Auto Reconnect] ตรวจพบการถูกเตะหรือหลุดจากเกม กำลังรีจอย...")
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
                 end
             end)
@@ -179,11 +175,7 @@ function stopFarm()
 end
 
 function startFarm()
-    if game.PlaceId == TARGET_PLACE_ID then
-        warn("[AutoFarm] ไม่สามารถใช้งานระบบฟาร์มในห้อง Lobby ได้!")
-        return
-    end
-
+    if game.PlaceId == TARGET_PLACE_ID then return end
     stopFarm()
 
     local currentTarget = nil
@@ -241,7 +233,7 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 22 -- ความสูง 22 ป้องกันมอนสเตอร์ตีถึง
+                local safeHeight = 22
                 if workspace:FindFirstChild("bossShot") then
                     safeHeight = 50
                     isDodgingBoss = true
@@ -301,7 +293,6 @@ function startFarm()
     end)
 end
 
--- ระบบวนลูปสร้างห้องและนับถอยหลัง 5 วินาทีก่อนกดสตาร์ท (พร้อมแสดงผลบนหน้าจอ GUI)
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
@@ -333,7 +324,6 @@ task.spawn(function()
                 end
 
                 if startDungeonRemote then
-                    -- นับถอยหลัง 5 วินาทีก่อนกดสตาร์ทเกม
                     for i = 5, 1, -1 do
                         if not getgenv().AutoCreateAndStart then break end
                         timerLabel.Text = "Starting in: " .. i .. "s"
@@ -354,7 +344,6 @@ task.spawn(function()
     end
 end)
 
--- เริ่มต้นระบบฟาร์มทันทีหากอยู่ในดันเจี้ยน
 if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
