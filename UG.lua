@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "Pirate Island"
-local selectedDifficulty = "Nightmare"
+local selectedMap = "King's Castle" -- เปลี่ยนแมพเป็น King's Castle
+local selectedDifficulty = "Insane" -- เปลี่ยนระดับความยากเป็น Insane
 
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
@@ -101,7 +101,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- ประกาศฟังก์ชันล่วงหน้า
 local startFarm, stopFarm
 
 toggleButton.MouseButton1Click:Connect(function()
@@ -200,14 +199,12 @@ function startFarm()
         end
 
         currentTarget = nil
-        -- ค้นหามอนสเตอร์ทั่ว Workspace (รองรับทุกแมพไม่จำกัดแค่โฟลเดอร์ dungeon)
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local hum = obj:FindFirstChild("Humanoid")
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                 if hum and hrp and hum.Health > 0 then
-                    -- เช็คว่าเป็นมอนสเตอร์จริง (มีชื่อเลือดหรืออยู่ในโซนศัตรู)
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
                         currentTarget = obj
                         hrp.Size = Vector3.new(25, 25, 25)
@@ -298,12 +295,10 @@ function startFarm()
     end)
 end
 
--- ลูปเช็คสถานะแยกส่วนระหว่าง Lobby และ Dungeon ให้ทำงานต่อเนื่องอัตโนมัติ
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
             if game.PlaceId == TARGET_PLACE_ID then
-                -- อยู่หน้า Lobby : จัดการสร้างห้องและนับถอยหลังกดเริ่มเกม
                 pcall(function()
                     timerLabel.Text = "Waiting for remotes..."
                     local remotes = ReplicatedStorage:WaitForChild("remotes", 10)
@@ -341,7 +336,6 @@ task.spawn(function()
                     end
                 end)
             else
-                -- อยู่ในดันเจี้ยน : สั่งรันระบบฟาร์มถ้ายังไม่ได้เปิด
                 timerLabel.Text = "In Dungeon / Farming"
                 if not getgenv().DungeonFarmLoop then
                     task.defer(startFarm)
@@ -354,7 +348,6 @@ task.spawn(function()
     end
 end)
 
--- เริ่มต้นทันทีถ้าเปิดมารอยู่นอก Lobby
 if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
