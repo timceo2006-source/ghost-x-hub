@@ -32,9 +32,9 @@ local Window = WindUI:CreateWindow({
     },
 })
 
--- เรียกใช้งาน ConfigManager ของ WindUI ตามเอกสาร
+-- เรียกใช้งาน ConfigManager ของ WindUI พร้อมเปิด autoload
 local ConfigManager = Window.ConfigManager
-local myConfig = ConfigManager:CreateConfig("settings") -- สร้างไฟล์ config ชื่อ settings.json
+local myConfig = ConfigManager:CreateConfig("settings", true)
 
 -- ตารางเก็บค่าสถานะการทำงานปัจจุบัน
 local ConfigData = {
@@ -220,10 +220,10 @@ local MapDropdown = LobbyTab:Dropdown({
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
     Default = ConfigData.SelectedMap,
-    Flag = "SelectedMap", -- กำหนด Flag เพื่อให้ ConfigManager จำค่าอัตโนมัติ
+    Flag = "SelectedMap",
     Callback = function(value)
         ConfigData.SelectedMap = value
-        myConfig:Save() -- สั่งบันทึก Config อัตโนมัติเมื่อค่าเปลี่ยน
+        myConfig:Save()
     end
 })
 
@@ -277,13 +277,13 @@ local AutoFarmToggle = DungeonTab:Toggle({
     end
 })
 
--- ลงทะเบียนองค์ประกอบ UI เข้ากับระบบ Config ตามเอกสาร
+-- ลงทะเบียนองค์ประกอบ UI เข้ากับระบบ Config
 myConfig:Register("SelectedMap", MapDropdown)
 myConfig:Register("SelectedDifficulty", DiffDropdown)
 myConfig:Register("AutoCreateAndStart", AutoStartToggle)
 myConfig:Register("AutoFarmEnabled", AutoFarmToggle)
 
--- โหลดข้อมูล Config ที่เคยบันทึกไว้ขึ้นมาแสดงผลและติ๊ก UI ให้ทันที
+-- โหลดข้อมูล Config ทันทีหลัง Register เพื่อบังคับติ๊ก UI
 myConfig:Load()
 
 -- ================= LOOPS =================
@@ -322,7 +322,6 @@ task.spawn(function()
     end
 end)
 
--- ถ่าวาร์ปไปดันเจี้ยนแล้วเปิด Auto Farm ค้างไว้ ให้รันฟาร์มต่อทันที
 if ConfigData.AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
