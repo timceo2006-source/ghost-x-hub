@@ -9,6 +9,7 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
+-- ================= CONFIG SYSTEM (บันทึก/โหลด JSON ภายนอก) =================
 local ConfigData = {
     SelectedMap = "Desert Temple",
     SelectedDifficulty = "Insane",
@@ -41,8 +42,10 @@ local function LoadConfig()
     end)
 end
 
+-- โหลดค่าเดิมขึ้นมาก่อนสร้าง UI
 LoadConfig()
 
+-- ================= FUNCTIONS =================
 local function pressKey(keyStr)
     local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
     if success and keyCode then
@@ -196,14 +199,8 @@ local function startFarm()
     end)
 end
 
-local success, WindUI = pcall(function()
-    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-end)
-
-if not success or not WindUI then
-    warn("[Ghost Hub] ไม่สามารถโหลด WindUI ได้")
-    return
-end
+-- ================= UI SETUP =================
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
 local Window = WindUI:CreateWindow({
     Title = "Ghost Hub",
@@ -228,8 +225,10 @@ local Window = WindUI:CreateWindow({
     },
 })
 
+-- ตัวแปรอ้างอิง UI สำหรับเซ็ตค่าเริ่มต้น
 local MapDropdown, DiffDropdown, AutoStartToggle, AutoFarmToggle
 
+-- ================= TABS =================
 local LobbyTab = Window:Tab({
     Title = "Lobby",
     Icon = "house",
@@ -304,6 +303,24 @@ AutoFarmToggle = DungeonTab:Toggle({
     end
 })
 
+-- บังคับเซ็ตค่าที่โหลดมาจากไฟล์ JSON ให้แสดงบน UI ทันทีที่เปิดสคริปต์
+task.spawn(function()
+    task.wait(0.1)
+    if MapDropdown and ConfigData.SelectedMap then
+        pcall(function() MapDropdown:Select(ConfigData.SelectedMap) end)
+    end
+    if DiffDropdown and ConfigData.SelectedDifficulty then
+        pcall(function() DiffDropdown:Select(ConfigData.SelectedDifficulty) end)
+    end
+    if AutoStartToggle and ConfigData.AutoCreateAndStart ~= nil then
+        pcall(function() AutoStartToggle:Set(ConfigData.AutoCreateAndStart) end)
+    end
+    if AutoFarmToggle and ConfigData.AutoFarmEnabled ~= nil then
+        pcall(function() AutoFarmToggle:Set(ConfigData.AutoFarmEnabled) end)
+    end
+end)
+
+-- ================= LOOPS =================
 task.spawn(function()
     while true do
         if ConfigData.AutoCreateAndStart then
