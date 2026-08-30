@@ -6,13 +6,6 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
-local ConfigData = {
-    SelectedMap = "Desert Temple",
-    SelectedDifficulty = "Insane",
-    AutoCreateAndStart = false,
-    AutoFarmEnabled = false
-}
-
 local function pressKey(keyStr)
     local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
     if success and keyCode then
@@ -89,7 +82,7 @@ local function startFarm()
     end
 
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
-        if not ConfigData.AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
+        if game.PlaceId == TARGET_PLACE_ID then return end
 
         pcall(function()
             local char = LocalPlayer.Character
@@ -124,7 +117,7 @@ local function startFarm()
     end)
 
     task.spawn(function()
-        while ConfigData.AutoFarmEnabled do
+        while true do
             task.wait(0.05)
             pcall(function()
                 if game.PlaceId == TARGET_PLACE_ID then return end
@@ -205,10 +198,9 @@ local MapDropdown = LobbyTab:Dropdown({
         "Ghastly Harbor", "Steampunk Sewers", "Orbital Outpost", "Volcanic Chambers",
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
-    Default = ConfigData.SelectedMap,
+    Default = "Desert Temple",
     Flag = "SelectedMap",
     Callback = function(value)
-        ConfigData.SelectedMap = value
         myConfig:Save()
     end
 })
@@ -216,20 +208,18 @@ local MapDropdown = LobbyTab:Dropdown({
 local DiffDropdown = LobbyTab:Dropdown({
     Title = "Difficulty Selection",
     Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
-    Default = ConfigData.SelectedDifficulty,
+    Default = "Insane",
     Flag = "SelectedDifficulty",
     Callback = function(value)
-        ConfigData.SelectedDifficulty = value
         myConfig:Save()
     end
 })
 
 local AutoStartToggle = LobbyTab:Toggle({
     Title = "AutoStart",
-    Default = ConfigData.AutoCreateAndStart,
+    Default = false,
     Flag = "AutoCreateAndStart",
     Callback = function(Value)
-        ConfigData.AutoCreateAndStart = Value
         myConfig:Save()
     end
 })
@@ -241,10 +231,9 @@ DungeonTab:Section({ Title = "Auto Farm", TextXAlignment = "Left", TextSize = 16
 local AutoFarmToggle = DungeonTab:Toggle({
     Title = "Auto Farm",
     Desc = "Auto Farm Dungeon & Boss Dodge",
-    Default = ConfigData.AutoFarmEnabled,
+    Default = false,
     Flag = "AutoFarmEnabled",
     Callback = function(State)
-        ConfigData.AutoFarmEnabled = State
         myConfig:Save()
         if State then startFarm() else stopFarm() end
     end
@@ -259,9 +248,8 @@ myConfig:Load()
 
 task.spawn(function()
     while true do
-        if ConfigData.AutoCreateAndStart then
+        if AutoStartToggle.Value and game.PlaceId == TARGET_PLACE_ID then
             pcall(function()
-                if game.PlaceId ~= TARGET_PLACE_ID then return end
                 local remotes = ReplicatedStorage:WaitForChild("remotes", 5)
                 if not remotes then return end
 
@@ -269,7 +257,7 @@ task.spawn(function()
                 local startDungeonRemote = remotes:FindFirstChild("startDungeon")
 
                 if createLobbyRemote then
-                    createLobbyRemote:InvokeServer(ConfigData.SelectedMap, ConfigData.SelectedDifficulty, 0, false, false, false)
+                    createLobbyRemote:InvokeServer(MapDropdown.Value, DiffDropdown.Value, 0, false, false, false)
                     task.wait(1)
                 end
 
@@ -283,6 +271,6 @@ task.spawn(function()
     end
 end)
 
-if ConfigData.AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
+if AutoFarmToggle.Value and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
