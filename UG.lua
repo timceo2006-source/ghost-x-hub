@@ -1,8 +1,9 @@
 local TARGET_PLACE_ID = 77649408247578
 
 local selectedMap = "Pirate Island"
-local selectedDifficulty = "Nightmare"
+local selectedDifficulty = "Nightmare" -- ความยาก Nightmare ตามต้องการ
 
+-- ตั้งค่าสถานะเริ่มต้นให้เปิดทำงานอัตโนมัติ
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
@@ -13,11 +14,116 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local TeleportService = game:GetService("TeleportService")
 local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
-print("[AutoScript] เริ่มต้นทำงานแบบไม่มี GUI เพื่อป้องกันสคริปต์ค้าง...")
+-- ==================== สร้าง GUI พร้อมตัวนับเวลา ====================
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "DungeonFarmGui"
+screenGui.ResetOnSpawn = false
+if syn and syn.protect_gui then
+    syn.protect_gui(screenGui)
+    screenGui.Parent = CoreGui
+elseif gethui then
+    screenGui.Parent = gethui()
+else
+    screenGui.Parent = CoreGui
+end
 
--- ระบบรีจอยอัตโนมัติเมื่อหลุด
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 200, 0, 115) -- ขยายกล่องให้พอดีกับข้อความบอกเวลา
+mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
+mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+mainFrame.BorderSizePixel = 0
+mainFrame.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(0, 8)
+uiCorner.Parent = mainFrame
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Size = UDim2.new(1, 0, 0, 25)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Text = "Dungeon Auto Farm"
+titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+titleLabel.TextSize = 13
+titleLabel.Font = Enum.Font.SourceSansBold
+titleLabel.Parent = mainFrame
+
+-- ข้อความแสดงเวลาถอยหลัง / สถานะ
+local timerLabel = Instance.new("TextLabel")
+timerLabel.Size = UDim2.new(1, 0, 0, 20)
+timerLabel.Position = UDim2.new(0, 0, 0, 25)
+timerLabel.BackgroundTransparency = 1
+timerLabel.Text = "Status: Ready"
+timerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+timerLabel.TextSize = 11
+timerLabel.Font = Enum.Font.SourceSans
+timerLabel.Parent = mainFrame
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0.9, 0, 0, 38)
+toggleButton.Position = UDim2.new(0.05, 0, 0.52, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.TextSize = 14
+toggleButton.Font = Enum.Font.SourceSansBold
+toggleButton.Text = "Status: ON"
+toggleButton.Parent = mainFrame
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 6)
+btnCorner.Parent = toggleButton
+
+-- ระบบลาก GUI
+local dragging, dragInput, dragStart, startPos
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+mainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- ฟังก์ชันกดปุ่มเปิด/ปิดสคริปต์หลัก
+toggleButton.MouseButton1Click:Connect(function()
+    getgenv().AutoFarmEnabled = not getgenv().AutoFarmEnabled
+    getgenv().AutoCreateAndStart = getgenv().AutoFarmEnabled 
+    
+    if getgenv().AutoFarmEnabled then
+        toggleButton.Text = "Status: ON"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
+        timerLabel.Text = "Status: Ready"
+        task.defer(startFarm)
+    else
+        toggleButton.Text = "Status: OFF"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(205, 50, 50)
+        timerLabel.Text = "Paused"
+        stopFarm()
+    end
+end)
+
+-- ==================== ระบบหลักของสคริปต์ ====================
+
+-- ระบบตรวจจับการโดนเตะหรือหลุดออกจากเกมเพื่อรีจอยอัตโนมัติ
 task.spawn(function()
     pcall(function()
         local errorPrompt = CoreGui:FindFirstChild("RobloxPromptGui", true)
@@ -25,6 +131,7 @@ task.spawn(function()
             errorPrompt.DescendantAdded:Connect(function(subChild)
                 if subChild.Name == "ErrorTitle" then
                     task.wait(2)
+                    print("[Auto Reconnect] ตรวจพบการถูกเตะหรือหลุดจากเกม กำลังรีจอย...")
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
                 end
             end)
@@ -72,7 +179,11 @@ function stopFarm()
 end
 
 function startFarm()
-    if game.PlaceId == TARGET_PLACE_ID then return end
+    if game.PlaceId == TARGET_PLACE_ID then
+        warn("[AutoFarm] ไม่สามารถใช้งานระบบฟาร์มในห้อง Lobby ได้!")
+        return
+    end
+
     stopFarm()
 
     local currentTarget = nil
@@ -130,7 +241,7 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 22
+                local safeHeight = 22 -- ความสูง 22 ป้องกันมอนสเตอร์ตีถึง
                 if workspace:FindFirstChild("bossShot") then
                     safeHeight = 50
                     isDodgingBoss = true
@@ -190,13 +301,17 @@ function startFarm()
     end)
 end
 
--- ระบบสร้างห้องและนับถอยหลัง 5 วินาทีก่อนสตาร์ท
+-- ระบบวนลูปสร้างห้องและนับถอยหลัง 5 วินาทีก่อนกดสตาร์ท (พร้อมแสดงผลบนหน้าจอ GUI)
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
             pcall(function()
-                if game.PlaceId ~= TARGET_PLACE_ID then return end
+                if game.PlaceId ~= TARGET_PLACE_ID then 
+                    timerLabel.Text = "In Dungeon / Farming"
+                    return 
+                end
 
+                timerLabel.Text = "Waiting for remotes..."
                 local remotes = ReplicatedStorage:WaitForChild("remotes", 10)
                 if not remotes then return end
 
@@ -204,6 +319,7 @@ task.spawn(function()
                 local startDungeonRemote = remotes:FindFirstChild("startDungeon")
 
                 if createLobbyRemote then
+                    timerLabel.Text = "Creating Lobby..."
                     local args = {
                         selectedMap,
                         selectedDifficulty,
@@ -217,16 +333,28 @@ task.spawn(function()
                 end
 
                 if startDungeonRemote then
-                    task.wait(5) -- รอ 5 วินาทีก่อนกดสตาร์ท
-                    startDungeonRemote:FireServer()
-                    task.wait(2)
+                    -- นับถอยหลัง 5 วินาทีก่อนกดสตาร์ทเกม
+                    for i = 5, 1, -1 do
+                        if not getgenv().AutoCreateAndStart then break end
+                        timerLabel.Text = "Starting in: " .. i .. "s"
+                        task.wait(1)
+                    end
+                    
+                    if getgenv().AutoCreateAndStart then
+                        timerLabel.Text = "Starting Game..."
+                        startDungeonRemote:FireServer()
+                        task.wait(2)
+                    end
                 end
             end)
+        else
+            timerLabel.Text = "Status: OFF"
         end
         task.wait(2)
     end
 end)
 
+-- เริ่มต้นระบบฟาร์มทันทีหากอยู่ในดันเจี้ยน
 if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
