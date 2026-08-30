@@ -1,15 +1,11 @@
 local TARGET_PLACE_ID = 77649408247578
-local FOLDER_PATH = "GhostHub/config"
-local CONFIG_FILE_PATH = FOLDER_PATH .. "/settings.json"
 
-local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
--- ================= CONFIG SYSTEM (บันทึก/โหลด JSON ภายนอก) =================
 local ConfigData = {
     SelectedMap = "Desert Temple",
     SelectedDifficulty = "Insane",
@@ -17,35 +13,6 @@ local ConfigData = {
     AutoFarmEnabled = false
 }
 
-local function SaveConfig()
-    pcall(function()
-        if not isfolder("GhostHub") then
-            makefolder("GhostHub")
-        end
-        if not isfolder(FOLDER_PATH) then
-            makefolder(FOLDER_PATH)
-        end
-        writefile(CONFIG_FILE_PATH, HttpService:JSONEncode(ConfigData))
-    end)
-end
-
-local function LoadConfig()
-    pcall(function()
-        if isfile(CONFIG_FILE_PATH) then
-            local decoded = HttpService:JSONDecode(readfile(CONFIG_FILE_PATH))
-            if type(decoded) == "table" then
-                for k, v in pairs(decoded) do
-                    ConfigData[k] = v
-                end
-            end
-        end
-    end)
-end
-
--- โหลดค่าเดิมขึ้นมาก่อนสร้าง UI
-LoadConfig()
-
--- ================= FUNCTIONS =================
 local function pressKey(keyStr)
     local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
     if success and keyCode then
@@ -78,7 +45,6 @@ end
 
 local function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then
-        warn("[AutoFarm] ไม่สามารถใช้งานระบบฟาร์มในห้อง Lobby ได้!")
         return
     end
 
@@ -199,8 +165,11 @@ local function startFarm()
     end)
 end
 
--- ================= UI SETUP =================
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+local success, WindUI = pcall(function()
+    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+end)
+
+if not success or not WindUI then return end
 
 local Window = WindUI:CreateWindow({
     Title = "Ghost Hub",
@@ -218,30 +187,17 @@ local Window = WindUI:CreateWindow({
     BackgroundImageTransparency = 0.42,
     HideSearchBar = true,
     ScrollBarEnabled = false,
-    User = {
-        Enabled = false,
-        Anonymous = false,
-        Callback = function() end,
-    },
+    User = { Enabled = false, Anonymous = false, Callback = function() end }
 })
 
--- ตัวแปรอ้างอิง UI สำหรับเซ็ตค่าเริ่มต้น
-local MapDropdown, DiffDropdown, AutoStartToggle, AutoFarmToggle
+local ConfigManager = Window.ConfigManager
+local myConfig = ConfigManager:CreateConfig("settings")
 
--- ================= TABS =================
-local LobbyTab = Window:Tab({
-    Title = "Lobby",
-    Icon = "house",
-    Locked = false,
-})
+local LobbyTab = Window:Tab({ Title = "Lobby", Icon = "house", Locked = false })
 
-LobbyTab:Section({
-    Title = "Auto Start Dungeon",
-    TextXAlignment = "Left",
-    TextSize = 16,
-})
+LobbyTab:Section({ Title = "Auto Start Dungeon", TextXAlignment = "Left", TextSize = 16 })
 
-MapDropdown = LobbyTab:Dropdown({
+local MapDropdown = LobbyTab:Dropdown({
     Title = "Map Selected",
     Values = {
         "Egg Island", "Desert Temple", "Winter Outpost", "Pirate Island",
@@ -250,83 +206,62 @@ MapDropdown = LobbyTab:Dropdown({
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
     Default = ConfigData.SelectedMap,
+    Flag = "SelectedMap",
     Callback = function(value)
         ConfigData.SelectedMap = value
-        SaveConfig()
+        myConfig:Save()
     end
 })
 
-DiffDropdown = LobbyTab:Dropdown({
+local DiffDropdown = LobbyTab:Dropdown({
     Title = "Difficulty Selection",
     Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
     Default = ConfigData.SelectedDifficulty,
+    Flag = "SelectedDifficulty",
     Callback = function(value)
         ConfigData.SelectedDifficulty = value
-        SaveConfig()
+        myConfig:Save()
     end
 })
 
-AutoStartToggle = LobbyTab:Toggle({
+local AutoStartToggle = LobbyTab:Toggle({
     Title = "AutoStart",
     Default = ConfigData.AutoCreateAndStart,
+    Flag = "AutoCreateAndStart",
     Callback = function(Value)
         ConfigData.AutoCreateAndStart = Value
-        SaveConfig()
+        myConfig:Save()
     end
 })
 
-local DungeonTab = Window:Tab({
-    Title = "Dungeon",
-    Icon = "bow-arrow",
-    Locked = false,
-})
+local DungeonTab = Window:Tab({ Title = "Dungeon", Icon = "bow-arrow", Locked = false })
 
-DungeonTab:Section({
-    Title = "Auto Farm",
-    TextXAlignment = "Left",
-    TextSize = 16,
-})
+DungeonTab:Section({ Title = "Auto Farm", TextXAlignment = "Left", TextSize = 16 })
 
-AutoFarmToggle = DungeonTab:Toggle({
+local AutoFarmToggle = DungeonTab:Toggle({
     Title = "Auto Farm",
     Desc = "Auto Farm Dungeon & Boss Dodge",
     Default = ConfigData.AutoFarmEnabled,
+    Flag = "AutoFarmEnabled",
     Callback = function(State)
         ConfigData.AutoFarmEnabled = State
-        SaveConfig()
-
-        if State then
-            startFarm()
-        else
-            stopFarm()
-        end
+        myConfig:Save()
+        if State then startFarm() else stopFarm() end
     end
 })
 
--- บังคับเซ็ตค่าที่โหลดมาจากไฟล์ JSON ให้แสดงบน UI ทันทีที่เปิดสคริปต์
-task.spawn(function()
-    task.wait(0.1)
-    if MapDropdown and ConfigData.SelectedMap then
-        pcall(function() MapDropdown:Select(ConfigData.SelectedMap) end)
-    end
-    if DiffDropdown and ConfigData.SelectedDifficulty then
-        pcall(function() DiffDropdown:Select(ConfigData.SelectedDifficulty) end)
-    end
-    if AutoStartToggle and ConfigData.AutoCreateAndStart ~= nil then
-        pcall(function() AutoStartToggle:Set(ConfigData.AutoCreateAndStart) end)
-    end
-    if AutoFarmToggle and ConfigData.AutoFarmEnabled ~= nil then
-        pcall(function() AutoFarmToggle:Set(ConfigData.AutoFarmEnabled) end)
-    end
-end)
+myConfig:Register("SelectedMap", MapDropdown)
+myConfig:Register("SelectedDifficulty", DiffDropdown)
+myConfig:Register("AutoCreateAndStart", AutoStartToggle)
+myConfig:Register("AutoFarmEnabled", AutoFarmToggle)
 
--- ================= LOOPS =================
+myConfig:Load()
+
 task.spawn(function()
     while true do
         if ConfigData.AutoCreateAndStart then
             pcall(function()
                 if game.PlaceId ~= TARGET_PLACE_ID then return end
-
                 local remotes = ReplicatedStorage:WaitForChild("remotes", 5)
                 if not remotes then return end
 
@@ -334,15 +269,7 @@ task.spawn(function()
                 local startDungeonRemote = remotes:FindFirstChild("startDungeon")
 
                 if createLobbyRemote then
-                    local args = {
-                        ConfigData.SelectedMap,
-                        ConfigData.SelectedDifficulty,
-                        0,
-                        false,
-                        false,
-                        false
-                    }
-                    createLobbyRemote:InvokeServer(unpack(args))
+                    createLobbyRemote:InvokeServer(ConfigData.SelectedMap, ConfigData.SelectedDifficulty, 0, false, false, false)
                     task.wait(1)
                 end
 
