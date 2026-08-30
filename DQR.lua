@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "Desert Temple"
-local selectedDifficulty = "Insane"
+local selectedMap = "Winter Outpost"
+local selectedDifficulty = "Hard"
 
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
