@@ -1,10 +1,10 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "Pirate Island"
-local selectedDifficulty = "Nightmare"
+local selectedMap = "King's Castle"
+local selectedDifficulty = "Insane"
 
 getgenv().AutoCreateAndStart = true
-getgenv().AutoFarmEnabled = true
+getgenv().Pirate = true
 getgenv().DungeonFarmLoop = nil
 
 local Players = game:GetService("Players")
