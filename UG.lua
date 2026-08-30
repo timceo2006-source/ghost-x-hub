@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "Winter Outpost"
-local selectedDifficulty = "Hard"
+local selectedMap = "Pirate Island"
+local selectedDifficulty = "Insane"
 
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
