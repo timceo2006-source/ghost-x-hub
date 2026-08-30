@@ -242,6 +242,7 @@ LobbyTab:Section({
 })
 
 MapDropdown = LobbyTab:Dropdown({
+MapDropdown = LobbyTab:Dropdown({
     Title = "Map Selected",
     Values = {
         "Egg Island", "Desert Temple", "Winter Outpost", "Pirate Island",
@@ -249,7 +250,7 @@ MapDropdown = LobbyTab:Dropdown({
         "Ghastly Harbor", "Steampunk Sewers", "Orbital Outpost", "Volcanic Chambers",
         "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
     },
-    Default = ConfigData.SelectedMap,
+    Default = ConfigData.SelectedMap, -- โหลดค่าจากไฟล์ JSON มาใส่ตรงนี้โดยตรง
     Callback = function(value)
         ConfigData.SelectedMap = value
         SaveConfig()
@@ -259,12 +260,13 @@ MapDropdown = LobbyTab:Dropdown({
 DiffDropdown = LobbyTab:Dropdown({
     Title = "Difficulty Selection",
     Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
-    Default = ConfigData.SelectedDifficulty,
+    Default = ConfigData.SelectedDifficulty, -- โหลดค่าจากไฟล์ JSON มาใส่ตรงนี้โดยตรง
     Callback = function(value)
         ConfigData.SelectedDifficulty = value
         SaveConfig()
     end
 })
+
 
 AutoStartToggle = LobbyTab:Toggle({
     Title = "AutoStart",
@@ -302,23 +304,6 @@ AutoFarmToggle = DungeonTab:Toggle({
         end
     end
 })
-
--- บังคับเซ็ตค่าที่โหลดมาจากไฟล์ JSON ให้แสดงบน UI ทันทีที่เปิดสคริปต์
-task.spawn(function()
-    task.wait(0.1)
-    if MapDropdown and ConfigData.SelectedMap then
-        pcall(function() MapDropdown:Select(ConfigData.SelectedMap) end)
-    end
-    if DiffDropdown and ConfigData.SelectedDifficulty then
-        pcall(function() DiffDropdown:Select(ConfigData.SelectedDifficulty) end)
-    end
-    if AutoStartToggle and ConfigData.AutoCreateAndStart ~= nil then
-        pcall(function() AutoStartToggle:Set(ConfigData.AutoCreateAndStart) end)
-    end
-    if AutoFarmToggle and ConfigData.AutoFarmEnabled ~= nil then
-        pcall(function() AutoFarmToggle:Set(ConfigData.AutoFarmEnabled) end)
-    end
-end)
 
 -- ================= LOOPS =================
 task.spawn(function()
