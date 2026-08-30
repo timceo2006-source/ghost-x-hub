@@ -1,10 +1,10 @@
 local TARGET_PLACE_ID = 77649408247578
 
 local selectedMap = "Pirate Island"
-local selectedDifficulty = "Nightmare"
+local selectedDifficulty = "Nightmare" -- เปลี่ยนความยากเป็น Nightmare ตามที่ขอ
 
 -- ตั้งค่าสถานะเริ่มต้น (ฟาร์มเปิดอยู่, ออโต้เข้าห้องปิดอยู่)
-getgenv().AutoCreateAndStart = true
+getgenv().AutoCreateAndStart = false
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
 
@@ -228,7 +228,7 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 18 -- ปรับความสูงขึ้นเป็น 18 เพื่อกันมอนสเตอร์ตีโดน
+                local safeHeight = 22 -- ปรับความสูงขึ้นเป็น 22 ตามที่ขอ
                 if workspace:FindFirstChild("bossShot") then
                     safeHeight = 50
                     isDodgingBoss = true
@@ -288,7 +288,7 @@ function startFarm()
     end)
 end
 
--- ระบบวนลูปสร้างและเข้าดันเจี้ยนอัตโนมัติเมื่ออยู่ Lobby
+-- ระบบวนลูปสร้างและเข้าดันเจี้ยนอัตโนมัติเมื่ออยู่ Lobby (หน่วงเวลาก่อนสตาร์ท 5 วิ)
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
@@ -315,6 +315,7 @@ task.spawn(function()
                 end
 
                 if startDungeonRemote then
+                    task.wait(5) -- รอ 5 วินาทีก่อนกดสตาร์ทเกม
                     startDungeonRemote:FireServer()
                     task.wait(1)
                 end
