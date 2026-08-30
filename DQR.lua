@@ -1,5 +1,6 @@
 local TARGET_PLACE_ID = 77649408247578
-local CONFIG_FILE = "GhostHub_Config.json"
+local FOLDER_PATH = "GhostHub/config"
+local CONFIG_FILE_PATH = FOLDER_PATH .. "/settings.json"
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -8,7 +9,7 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local LocalPlayer = Players.LocalPlayer
 
--- ================= CONFIG SYSTEM (บันทึกไฟล์ JSON นอกโฟลเดอร์ทันที) =================
+-- ================= CONFIG SYSTEM (บันทึก/โหลด JSON ภายนอก) =================
 local ConfigData = {
     SelectedMap = "Desert Temple",
     SelectedDifficulty = "Insane",
@@ -18,15 +19,20 @@ local ConfigData = {
 
 local function SaveConfig()
     pcall(function()
-        local encoded = HttpService:JSONEncode(ConfigData)
-        writefile(CONFIG_FILE, encoded)
+        if not isfolder("GhostHub") then
+            makefolder("GhostHub")
+        end
+        if not isfolder(FOLDER_PATH) then
+            makefolder(FOLDER_PATH)
+        end
+        writefile(CONFIG_FILE_PATH, HttpService:JSONEncode(ConfigData))
     end)
 end
 
 local function LoadConfig()
     pcall(function()
-        if isfile(CONFIG_FILE) then
-            local decoded = HttpService:JSONDecode(readfile(CONFIG_FILE))
+        if isfile(CONFIG_FILE_PATH) then
+            local decoded = HttpService:JSONDecode(readfile(CONFIG_FILE_PATH))
             if type(decoded) == "table" then
                 for k, v in pairs(decoded) do
                     ConfigData[k] = v
@@ -36,7 +42,7 @@ local function LoadConfig()
     end)
 end
 
--- โหลดค่าเดิมก่อนสร้าง UI
+-- โหลดค่าเดิมขึ้นมาก่อนสร้าง UI
 LoadConfig()
 
 -- ================= FUNCTIONS =================
@@ -219,7 +225,7 @@ local Window = WindUI:CreateWindow({
     },
 })
 
--- ตัวแปรอ้างอิง UI
+-- ตัวแปรอ้างอิง UI สำหรับเซ็ตค่าเริ่มต้น
 local MapDropdown, DiffDropdown, AutoStartToggle, AutoFarmToggle
 
 -- ================= TABS =================
@@ -246,7 +252,7 @@ MapDropdown = LobbyTab:Dropdown({
     Default = ConfigData.SelectedMap,
     Callback = function(value)
         ConfigData.SelectedMap = value
-        SaveConfig() -- บันทึกทันทีเมื่อเปลี่ยน Map
+        SaveConfig()
     end
 })
 
@@ -256,7 +262,7 @@ DiffDropdown = LobbyTab:Dropdown({
     Default = ConfigData.SelectedDifficulty,
     Callback = function(value)
         ConfigData.SelectedDifficulty = value
-        SaveConfig() -- บันทึกทันทีเมื่อเปลี่ยน Difficulty
+        SaveConfig()
     end
 })
 
@@ -265,7 +271,7 @@ AutoStartToggle = LobbyTab:Toggle({
     Default = ConfigData.AutoCreateAndStart,
     Callback = function(Value)
         ConfigData.AutoCreateAndStart = Value
-        SaveConfig() -- บันทึกทันทีเมื่อเปิด/ปิด AutoStart
+        SaveConfig()
     end
 })
 
@@ -287,7 +293,7 @@ AutoFarmToggle = DungeonTab:Toggle({
     Default = ConfigData.AutoFarmEnabled,
     Callback = function(State)
         ConfigData.AutoFarmEnabled = State
-        SaveConfig() -- บันทึกทันทีเมื่อเปิด/ปิด Auto Farm
+        SaveConfig()
 
         if State then
             startFarm()
@@ -297,7 +303,7 @@ AutoFarmToggle = DungeonTab:Toggle({
     end
 })
 
--- บังคับเซ็ตค่าที่โหลดมาจากไฟล์ JSON นอกโฟลเดอร์ ให้มาแสดงบน UI ตอนรันสคริปต์
+-- บังคับเซ็ตค่าที่โหลดมาจากไฟล์ JSON ให้แสดงบน UI ทันทีที่เปิดสคริปต์
 task.spawn(function()
     task.wait(0.1)
     if MapDropdown and ConfigData.SelectedMap then
@@ -313,9 +319,6 @@ task.spawn(function()
         pcall(function() AutoFarmToggle:Set(ConfigData.AutoFarmEnabled) end)
     end
 end)
-
--- บันทึกค่าเริ่มต้นครั้งแรกเผื่อยังไม่มีไฟล์
-SaveConfig()
 
 -- ================= LOOPS =================
 task.spawn(function()
