@@ -1,5 +1,12 @@
 local TARGET_PLACE_ID = 77649408247578
 
+local selectedMap = "Desert Temple"
+local selectedDifficulty = "Insane"
+
+getgenv().AutoCreateAndStart = true
+getgenv().AutoFarmEnabled = true
+getgenv().DungeonFarmLoop = nil
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -38,6 +45,7 @@ end
 
 local function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then
+        warn("[AutoFarm] ไม่สามารถใช้งานระบบฟาร์มในห้อง Lobby ได้!")
         return
     end
 
@@ -82,7 +90,7 @@ local function startFarm()
     end
 
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
-        if game.PlaceId == TARGET_PLACE_ID then return end
+        if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
         pcall(function()
             local char = LocalPlayer.Character
@@ -117,7 +125,7 @@ local function startFarm()
     end)
 
     task.spawn(function()
-        while true do
+        while getgenv().AutoFarmEnabled do
             task.wait(0.05)
             pcall(function()
                 if game.PlaceId == TARGET_PLACE_ID then return end
@@ -158,98 +166,13 @@ local function startFarm()
     end)
 end
 
-local success, WindUI = pcall(function()
-    return loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-end)
-
-if not success or not WindUI then return end
-
-local Window = WindUI:CreateWindow({
-    Title = "Ghost Hub",
-    Icon = "ghost",
-    Author = "by .TiM",
-    Folder = "WindUI/GhostHub", -- บังคับให้เก็บไว้ในโฟลเดอร์ WindUI ด้านในสุด
-    Size = UDim2.fromOffset(580, 460),
-    MinSize = Vector2.new(560, 350),
-    MaxSize = Vector2.new(850, 560),
-    ToggleKey = Enum.KeyCode.LeftShift,
-    Transparent = true,
-    Theme = "Dark",
-    Resizable = true,
-    SideBarWidth = 200,
-    BackgroundImageTransparency = 0.42,
-    HideSearchBar = true,
-    ScrollBarEnabled = false,
-    User = { Enabled = false, Anonymous = false, Callback = function() end }
-})
-
-local ConfigManager = Window.ConfigManager
-local myConfig = ConfigManager:CreateConfig("settings")
-
-local LobbyTab = Window:Tab({ Title = "Lobby", Icon = "house", Locked = false })
-
-LobbyTab:Section({ Title = "Auto Start Dungeon", TextXAlignment = "Left", TextSize = 16 })
-
-local MapDropdown = LobbyTab:Dropdown({
-    Title = "Map Selected",
-    Values = {
-        "Egg Island", "Desert Temple", "Winter Outpost", "Pirate Island",
-        "King's Castle", "The Underworld", "Samurai Palace", "The Canals",
-        "Ghastly Harbor", "Steampunk Sewers", "Orbital Outpost", "Volcanic Chambers",
-        "Aquatic Temple", "Enchanted Forest", "Northern Lands", "Gilded Skies", "Oni Dungeon"
-    },
-    Default = "Desert Temple",
-    Flag = "SelectedMap",
-    Callback = function(value)
-        myConfig:Save()
-    end
-})
-
-local DiffDropdown = LobbyTab:Dropdown({
-    Title = "Difficulty Selection",
-    Values = {"Easy", "Medium", "Hard", "Insane", "Nightmare", "Hardcore Mode"},
-    Default = "Insane",
-    Flag = "SelectedDifficulty",
-    Callback = function(value)
-        myConfig:Save()
-    end
-})
-
-local AutoStartToggle = LobbyTab:Toggle({
-    Title = "AutoStart",
-    Default = false,
-    Flag = "AutoCreateAndStart",
-    Callback = function(Value)
-        myConfig:Save()
-    end
-})
-
-local DungeonTab = Window:Tab({ Title = "Dungeon", Icon = "bow-arrow", Locked = false })
-
-DungeonTab:Section({ Title = "Auto Farm", TextXAlignment = "Left", TextSize = 16 })
-
-local AutoFarmToggle = DungeonTab:Toggle({
-    Title = "Auto Farm",
-    Desc = "Auto Farm Dungeon & Boss Dodge",
-    Default = false,
-    Flag = "AutoFarmEnabled",
-    Callback = function(State)
-        myConfig:Save()
-        if State then startFarm() else stopFarm() end
-    end
-})
-
-myConfig:Register("SelectedMap", MapDropdown)
-myConfig:Register("SelectedDifficulty", DiffDropdown)
-myConfig:Register("AutoCreateAndStart", AutoStartToggle)
-myConfig:Register("AutoFarmEnabled", AutoFarmToggle)
-
-myConfig:Load()
-
+-- ระบบวนลูปสร้างและเข้าดันเจี้ยนอัตโนมัติเมื่ออยู่ Lobby
 task.spawn(function()
     while true do
-        if AutoStartToggle.Value and game.PlaceId == TARGET_PLACE_ID then
+        if getgenv().AutoCreateAndStart then
             pcall(function()
+                if game.PlaceId ~= TARGET_PLACE_ID then return end
+
                 local remotes = ReplicatedStorage:WaitForChild("remotes", 5)
                 if not remotes then return end
 
@@ -257,7 +180,15 @@ task.spawn(function()
                 local startDungeonRemote = remotes:FindFirstChild("startDungeon")
 
                 if createLobbyRemote then
-                    createLobbyRemote:InvokeServer(MapDropdown.Value, DiffDropdown.Value, 0, false, false, false)
+                    local args = {
+                        selectedMap,
+                        selectedDifficulty,
+                        0,
+                        false,
+                        false,
+                        false
+                    }
+                    createLobbyRemote:InvokeServer(unpack(args))
                     task.wait(1)
                 end
 
@@ -271,6 +202,7 @@ task.spawn(function()
     end
 end)
 
-if AutoFarmToggle.Value and game.PlaceId ~= TARGET_PLACE_ID then
+-- เริ่มต้นระบบฟาร์มทันทีหากอยู่ในดันเจี้ยน
+if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
