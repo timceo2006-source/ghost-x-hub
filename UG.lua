@@ -191,10 +191,8 @@ function startFarm()
     local lastFoundMonsterTime = tick()
     
     local farmState = "HOVER"
-    local hoverHeights = {120, 40, 70}
-    local heightIndex = 1
-    local lastHeightChange = tick()
-    local currentHoverHeight = hoverHeights[1]
+    local lastToggleTime = tick()
+    local togglePosFlag = false
 
     local function expandNearbyHitboxes(playerHrp)
         for _, obj in ipairs(workspace:GetDescendants()) do
@@ -253,7 +251,6 @@ function startFarm()
         return nil, nil
     end
 
-    -- ฟังก์ชันค้นหา Tool ตามปุ่มสกิล
     local function getSkillTool(keyName)
         local items = {}
         if LocalPlayer:FindFirstChild("Backpack") then
@@ -274,25 +271,26 @@ function startFarm()
         return nil
     end
 
-    -- ตรวจสอบว่าสกิลพร้อมใช้ไหม (คูลดาวน์หมด)
-    local function checkSkillsReady()
-        local qTool = getSkillTool("Q")
-        local eTool = getSkillTool("E")
-        
-        local qReady = false
-        local eReady = false
-
-        if qTool then
-            local cd = qTool:FindFirstChild("cooldown")
-            if cd and cd:IsA("ValueBase") and cd.Value <= 0.1 then qReady = true end
+    local function isSkillOnCooldown(keyName)
+        local tool = getSkillTool(keyName)
+        if tool then
+            local cd = tool:FindFirstChild("cooldown")
+            if cd and cd:IsA("ValueBase") then
+                return cd.Value > 0.2
+            end
         end
+        return false
+    end
 
-        if eTool then
-            local cd = eTool:FindFirstChild("cooldown")
-            if cd and cd:IsA("ValueBase") and cd.Value <= 0.1 then eReady = true end
+    local function checkSkillReady(keyName)
+        local tool = getSkillTool(keyName)
+        if tool then
+            local cd = tool:FindFirstChild("cooldown")
+            if cd and cd:IsA("ValueBase") and cd.Value <= 0.1 then
+                return true
+            end
         end
-
-        return qReady or eReady, qTool ~= nil or eTool ~= nil
+        return false
     end
 
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
@@ -314,79 +312,89 @@ function startFarm()
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                local isReady, hasAnySkill = checkSkillsReady()
-
-                -- เริ่มคอมโบเมื่อสกิลพร้อมและสถานะเป็น HOVER
-                if isReady and farmState == "HOVER" then
-                    farmState = "COMBO_ACTIVE"
+                -- เริ่มคอมโบเมื่อสกิล Q พร้อมและสถานะเป็น HOVER
+                if checkSkillReady("Q") and farmState == "HOVER" then
+                    farmState = "COMBO_FRONT_Q"
 
                     task.spawn(function()
-                        -- เฟสที่ 1: มุดลงใต้เท้า (ใต้พื้นดิน) แล้วกดสกิล Q
-                        farmState = "UNDERGROUND_Q"
-                        task.wait(0.15)
-                        
                         local initialHealth = targetHum.Health
-                        pressKey("Q")
-                        
-                        -- รอจนกว่าดาเมจจะเข้า (เลือดมอนลดลง) หรือหมดเวลา 1.5 วินาที ค่อยขยับขึ้น
-                        local waitDamageTime = tick()
-                        while targetHum and targetHum.Health > 0 do
-                            if targetHum.Health < initialHealth or (tick() - waitDamageTime) > 1.5 then
-                                break
-                            end
-                            task.wait(0.05)
-                        end
-                        
-                        task.wait(0.1)
 
-                        -- เฟสที่ 2: วาปขึ้นไปด้านบน หันหน้าขึ้นฟ้า รอยิงสกิล E
-                        farmState = "ABOVE_E"
+                        -- 1. วาปไปด้านหน้ามอนสเตอร์ แล้วกด Q
+                        farmState = "FRONT_Q"
+                        task.wait(0.2)
+                        pressKey("Q")
+
+                        -- รอเช็กว่าสกิลติดคูลดาวน์หรือเลือดลดลง
+                        local waitTime = tick()
+                        while not isSkillOnCooldown("Q") and targetHum.Health >= initialHealth do
+                            task.wait(0.05)
+                            if (tick() - waitTime) > 1.5 then break end
+                        end
                         task.wait(0.2)
 
-                        pressKey("E")
-                        task.wait(0.4) -- รอให้สกิล E ทำงานเสร็จสิ้นเต็มที่
+                        -- บันทึกเลือดปัจจุบันเพื่อเช็กสเต็ปถัดไป
+                        initialHealth = targetHum.Health
 
-                        -- พักจังหวะสั้นๆ แล้วกลับสู่สถานะโฮเวอร์ตามปกติ
-                        farmState = "TRANSITION"
-                        task.wait(0.3)
+                        -- 2. วาปไปด้านหลังมอนสเตอร์ แล้วเช็กสกิล/เลือด
+                        farmState = "BACK_CHECK"
+                        task.wait(0.2)
+                        
+                        local waitTime2 = tick()
+                        while targetHum.Health >= initialHealth do
+                            task.wait(0.05)
+                            if (tick() - waitTime2) > 1.5 then break end
+                        end
+                        task.wait(0.2)
 
-                        heightIndex = 1
-                        currentHoverHeight = hoverHeights[1]
-                        lastHeightChange = tick()
-                        farmState = "HOVER"
+                        -- 3. เข้าสู่โหมดสลับหลบ (บนหัว 100 / ใต้เท้า 30 ทุกๆ 1 วิ) จนกว่าจะครบรอบหรือพร้อมสกิลใหม่
+                        farmState = "EVADE_HOVER"
+                        lastToggleTime = tick()
+                        togglePosFlag = false
                     end)
                 end
 
                 local targetPos = targetHrp.Position
+                local targetLookVector = targetHrp.CFrame.LookVector
                 local orbitPos
 
-                if farmState == "UNDERGROUND_Q" then
-                    -- ตำแหน่งใต้เท้า / ใต้พื้นดิน (ต่ำกว่ามอนสเตอร์ลงไป 12 หน่วย)
-                    orbitPos = targetPos - Vector3.new(0, 12, 0)
-                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos + Vector3.new(0, 2, 0))
-                    return
-
-                elseif farmState == "ABOVE_E" then
-                    -- ตำแหน่งด้านบน (สูงขึ้นไป 12 หน่วยจากมอนสเตอร์)
-                    orbitPos = targetPos + Vector3.new(0, 12, 0)
-                    -- หันหน้าขึ้นฟ้า (มองตรงขึ้นไปด้านบนเพื่อดันมอน)
-                    hrp.CFrame = CFrame.lookAt(orbitPos, orbitPos + Vector3.new(0, 50, 0))
-                    return
-
-                elseif farmState == "TRANSITION" then
-                    orbitPos = targetPos + Vector3.new(0, 25, 0)
+                if farmState == "FRONT_Q" then
+                    -- ด้านหน้ามอนสเตอร์ (ห่างออกไป 8 หน่วยด้านหน้า)
+                    orbitPos = targetPos - (targetLookVector * 8) + Vector3.new(0, 2, 0)
                     hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+                    return
+
+                elseif farmState == "BACK_CHECK" then
+                    -- ด้านหลังมอนสเตอร์ (ห่างออกไป 8 หน่วยด้านหลัง)
+                    orbitPos = targetPos + (targetLookVector * 8) + Vector3.new(0, 2, 0)
+                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+                    return
+
+                elseif farmState == "EVADE_HOVER" then
+                    -- สลับทุกๆ 1 วินาที: บนหัว (ระยะ 100) กับ ใต้เท้า (ระยะ 30)
+                    if tick() - lastToggleTime >= 1 then
+                        togglePosFlag = not togglePosFlag
+                        lastToggleTime = tick()
+                    end
+
+                    if togglePosFlag then
+                        -- บนหัว 100
+                        orbitPos = targetPos + Vector3.new(0, 100, 0)
+                    else
+                        -- ใต้เท้า 30 (ใต้พื้นดินลงไป)
+                        orbitPos = targetPos - Vector3.new(0, 30, 0)
+                    end
+
+                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+
+                    -- ถ้าสกิล Q พร้อมแล้ว ให้กลับไปสถานะ HOVER เพื่อเริ่มคอมโบใหม่
+                    if checkSkillReady("Q") then
+                        farmState = "HOVER"
+                    end
                     return
 
                 else
                     -- สถานะโฮเวอร์ปกติ วนรอบๆ มอนสเตอร์
-                    if tick() - lastHeightChange >= 1 then
-                        heightIndex = (heightIndex % #hoverHeights) + 1
-                        currentHoverHeight = hoverHeights[heightIndex]
-                        lastHeightChange = tick()
-                    end
-
-                    orbitPos = targetPos + Vector3.new(0, currentHoverHeight, 0)
+                    orbitPos = targetPos + Vector3.new(0, 50, 0)
                     hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
                 end
 
@@ -427,7 +435,6 @@ task.spawn(function()
                     end
 
                     if startDungeonRemote then
-                        -- เพิ่มเวลารอ 5 วินาทีก่อนกดเริ่มเกมตามที่คุณต้องการ
                         for i = 5, 1, -1 do
                             if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
                             timerLabel.Text = "Starting in: " .. i .. "s"
@@ -443,6 +450,21 @@ task.spawn(function()
                 end)
             else
                 timerLabel.Text = "In Dungeon / Farming"
+                
+                -- หน่วงเวลา 5 วินาทีก่อนเริ่มดันเจี้ยน หากยังไม่พบมอนสเตอร์
+                local checkMonsterTime = tick()
+                while game.PlaceId ~= TARGET_PLACE_ID and getgenv().AutoCreateAndStart do
+                    local _, hum = getTarget()
+                    if hum then
+                        break
+                    end
+                    if tick() - checkMonsterTime >= 5 then
+                        timerLabel.Text = "Waiting for monsters..."
+                        break
+                    end
+                    task.wait(0.5)
+                end
+
                 if not getgenv().DungeonFarmLoop then
                     task.defer(startFarm)
                 end
