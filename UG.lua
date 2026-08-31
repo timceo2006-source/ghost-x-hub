@@ -367,12 +367,12 @@ function startFarm()
                     -- ช่วงโจมตี: หมุนควงรอบตัวมอนสเตอร์ที่ความสูง 20
                     local timeNow = tick()
                     local radius = 18 
-                    local speed = 4   
+                    local speed = 3   
                     local angle = timeNow * speed
                     
                     local offsetX = math.cos(angle) * radius
                     local offsetZ = math.sin(angle) * radius
-                    orbitPos = targetPos + Vector3.new(offsetX, 20, offsetZ)
+                    orbitPos = targetPos + Vector3.new(offsetX, 25, offsetZ)
 
                 elseif farmState == "TRANSITION" then
                     -- ช่วงพักจังหวะ: ลอยนิ่งเหนือหัวที่ความสูง 35
