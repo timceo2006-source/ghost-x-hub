@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "King's Castle"
-local selectedDifficulty = "Nightmare"
+local selectedMap = "The Underworld"
+local selectedDifficulty = "Insane"
 
 -- ตั้งค่าฮิตบ็อกซ์
 local HITBOX_RADIUS = 150
