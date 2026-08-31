@@ -353,7 +353,7 @@ function startFarm()
                     
                     local offsetX = math.cos(angle) * radius
                     local offsetZ = math.sin(angle) * radius
-                    orbitPos = targetPos + Vector3.new(offsetX, 25, offsetZ)
+                    orbitPos = targetPos + Vector3.new(offsetX, 15, offsetZ)
 
                 elseif farmState == "TRANSITION" then
                     orbitPos = targetPos + Vector3.new(0, 35, 0)
