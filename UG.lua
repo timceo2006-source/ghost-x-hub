@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "The Underworld"
-local selectedDifficulty = "Insane"
+local selectedMap = "King's Castle"
+local selectedDifficulty = "Nightmare"
 
 -- ตั้งค่าให้เปิดทั้งฟาร์มและออโต้สร้างห้องตั้งแต่เริ่มรันสคริปต์
 getgenv().AutoCreateAndStart = true
