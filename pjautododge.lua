@@ -21,16 +21,20 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== GUI (มุมขวาบน) ====================
+-- ==================== GUI (รองรับ Delta Mobile) ====================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "DungeonFarmGui"
 screenGui.ResetOnSpawn = false
-if syn and syn.protect_gui then
-    syn.protect_gui(screenGui)
-    screenGui.Parent = CoreGui
-elseif gethui then
-    screenGui.Parent = gethui()
-else
+
+-- แก้ไขจุดที่ทำให้รันบนมือถือไม่ได้ (ใช้ CoreGui โดยตรงปลอดภัยที่สุด)
+local successGui, err = pcall(function()
+    if gethui then
+        screenGui.Parent = gethui()
+    else
+        screenGui.Parent = CoreGui
+    end
+end)
+if not successGui then
     screenGui.Parent = CoreGui
 end
 
@@ -78,7 +82,7 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleButton
 
--- ระบบลาก GUI
+-- ระบบลาก GUI (รองรับ Touch บนมือถือ)
 local dragging, dragInput, dragStart, startPos
 mainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -163,18 +167,6 @@ local function pressKey(keyStr)
     end
 end
 
-local function tryStartGame()
-    pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("remotes")
-        if remotes then
-            local changeStartValue = remotes:FindFirstChild("changeStartValue")
-            if changeStartValue and changeStartValue:IsA("RemoteEvent") then
-                changeStartValue:FireServer()
-            end
-        end
-    end)
-end
-
 function stopFarm()
     if getgenv().DungeonFarmLoop then
         getgenv().DungeonFarmLoop:Disconnect()
@@ -189,11 +181,8 @@ function startFarm()
 
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
-    
-    -- สถานะการทำงาน: "HOVER" (รอคูลดาวน์บนฟ้า), "ATTACK" (ปล่อยสกิลที่ความสูง 20), "TRANSITION" (ลอยนิ่งความสูง 35)
     local farmState = "HOVER"
 
-    -- ตั้งค่าระดับความสูงช่วงรอคูลดาวน์ (80, 50, 70)
     local hoverHeights = {120, 40, 70}
     local heightIndex = 1
     local lastHeightChange = tick()
@@ -309,12 +298,10 @@ function startFarm()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                -- เริ่มต้นลำดับการโจมตีเมื่อสกิลพร้อม และอยู่ในสถานะรอคูลดาวน์บนฟ้า
                 if isReady and farmState == "HOVER" then
                     farmState = "ATTACK"
 
                     task.spawn(function()
-                        -- Step 1: ปล่อยสกิลครบที่ความสูง 20 (ตำแหน่งการหมุนจะถูกควบคุมใน Heartbeat)
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
@@ -336,7 +323,6 @@ function startFarm()
                             end
                         end
 
-                        -- ตีธรรมดาปิดท้าย
                         local currentChar = LocalPlayer.Character
                         if currentChar then
                             local equippedTool = currentChar:FindFirstChildOfClass("Tool")
@@ -346,12 +332,9 @@ function startFarm()
                         end
 
                         task.wait(0.2)
-
-                        -- Step 2: วาปขึ้นความสูง 35 เพื่อลอยนิ่งพักจังหวะ 0.35 วินาที
                         farmState = "TRANSITION"
                         task.wait(0.35)
 
-                        -- Step 3: วาปขึ้นไปรอคูลดาวน์บนฟ้า (ความสูง 80, 50, 70)
                         heightIndex = 1
                         currentHoverHeight = hoverHeights[1]
                         lastHeightChange = tick()
@@ -359,12 +342,10 @@ function startFarm()
                     end)
                 end
 
-                -- การคำนวณตำแหน่งพิกัดตาม Logic แต่ละช่วง
                 local targetPos = targetHrp.Position
                 local orbitPos
 
                 if farmState == "ATTACK" then
-                    -- ช่วงโจมตี: หมุนควงรอบตัวมอนสเตอร์ที่ความสูง 20
                     local timeNow = tick()
                     local radius = 18 
                     local speed = 3   
@@ -375,11 +356,9 @@ function startFarm()
                     orbitPos = targetPos + Vector3.new(offsetX, 25, offsetZ)
 
                 elseif farmState == "TRANSITION" then
-                    -- ช่วงพักจังหวะ: ลอยนิ่งเหนือหัวที่ความสูง 35
                     orbitPos = targetPos + Vector3.new(0, 35, 0)
 
-                else -- farmState == "HOVER"
-                    -- ช่วงรอคูลดาวน์: ลอยนิ่งเหนือหัว และสลับความสูงระหว่าง 80, 50, 70 ทุกๆ 1 วินาที
+                else 
                     if tick() - lastHeightChange >= 1 then
                         heightIndex = (heightIndex % #hoverHeights) + 1
                         currentHoverHeight = hoverHeights[heightIndex]
@@ -394,7 +373,15 @@ function startFarm()
             else
                 farmState = "HOVER"
                 if tick() - lastFoundMonsterTime > 1.5 then
-                    tryStartGame()
+                    pcall(function()
+                        local remotes = ReplicatedStorage:FindFirstChild("remotes")
+                        if remotes then
+                            local changeStartValue = remotes:FindFirstChild("changeStartValue")
+                            if changeStartValue and changeStartValue:IsA("RemoteEvent") then
+                                changeStartValue:FireServer()
+                            end
+                        end
+                    end)
                 end
             end
         end)
