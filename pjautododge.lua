@@ -8,7 +8,7 @@ local USE_NORMAL_ATTACK = true -- true = ใช้ตีธรรมดาด้
 local AUTO_DODGE_ENABLED = true -- เปิด/ปิด ระบบออโต้หลบอัจฉริยะ (หลบเฉพาะตอนมีอันตรายเข้าใกล้)
 
 -- ตั้งค่าความสูงในการลอยนิ่งๆ เหนือหัวบอส
-local HOVER_HEIGHT = 30
+local HOVER_HEIGHT = 25
 
 -- ตั้งค่าฮิตบ็อกซ์
 local HITBOX_RADIUS = 150
