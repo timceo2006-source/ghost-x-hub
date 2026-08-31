@@ -1,14 +1,11 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "The Underworld"
-local selectedDifficulty = "Insane"
+local selectedMap = "King's Castle"
+local selectedDifficulty = "Nightmare"
 
 -- ตั้งค่าฮิตบ็อกซ์
 local HITBOX_RADIUS = 150
 local HITBOX_SIZE = Vector3.new(20, 20, 20)
-
--- ตั้งค่าการโจมตี (true = ใช้ตีธรรมดาผสมในคอมโบด้วย, false = ใช้แค่สกิลอย่างเดียว)
-local USE_NORMAL_ATTACK = true 
 
 -- ตั้งค่าเปิดใช้งานระบบ
 getgenv().AutoCreateAndStart = true
@@ -166,36 +163,6 @@ local function pressKey(keyStr)
     end
 end
 
--- ฟังก์ชันสำหรับสลับตัวละคร (Swap) เมื่อตีไม่เข้าตามเงื่อนไข
-local function trySwapCharacter()
-    pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("remotes")
-        if remotes then
-            -- ค้นหารemoteสำหรับสลับตัวละคร (สามารถปรับชื่อตามเกมจริงได้หากมี)
-            for _, v in ipairs(remotes:GetChildren()) do
-                if v:IsA("RemoteEvent") and (v.Name:lower():find("swap") or v.Name:lower():find("character") or v.Name:lower():find("hero")) then
-                    v:FireServer()
-                    return
-                end
-            end
-        end
-        
-        -- Fallback: ลองจำลองการคลิกปุ่ม Swap ในหน้าจอ PlayerGui หากมี
-        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-        if playerGui then
-            for _, gui in ipairs(playerGui:GetDescendants()) do
-                if gui:IsA("TextButton") and (gui.Text:lower():find("swap") or gui.Name:lower():find("swap")) then
-                    local absPos = gui.AbsolutePosition
-                    local absSize = gui.AbsoluteSize
-                    VirtualInputManager:SendMouseButtonEvent(absPos.X + absSize.X/2, absPos.Y + absSize.Y/2, 0, true, game, 0)
-                    task.wait(0.05)
-                    VirtualInputManager:SendMouseButtonEvent(absPos.X + absSize.X/2, absPos.Y + absSize.Y/2, 0, false, game, 0)
-                end
-            end
-        end
-    end)
-end
-
 local function tryStartGame()
     pcall(function()
         local remotes = ReplicatedStorage:FindFirstChild("remotes")
@@ -223,15 +190,10 @@ function startFarm()
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
     
-    -- สถานะการทำงาน: "HOVER" (รอคูลดาวน์บนฟ้า), "ATTACK" (ปล่อยสกิลที่ความสูง 25), "TRANSITION" (ลอยนิ่งความสูง 35)
+    -- สถานะการทำงาน: "HOVER" (รอคูลดาวน์บนฟ้า), "ATTACK" (ปล่อยสกิลที่ความสูง 20), "TRANSITION" (ลอยนิ่งความสูง 35)
     local farmState = "HOVER"
 
-    -- ลำดับเป้าหมายอัจฉริยะสำหรับบอสพิเศษ: "BOSS" -> "HEART" -> "MINION"
-    local targetPriorityState = "BOSS"
-    local lastTargetHealth = -1
-    local failDamageCount = 0
-
-    -- ตั้งค่าระดับความสูงช่วงรอคูลดาวน์ (120, 40, 70)
+    -- ตั้งค่าระดับความสูงช่วงรอคูลดาวน์ (80, 50, 70)
     local hoverHeights = {120, 40, 70}
     local heightIndex = 1
     local lastHeightChange = tick()
@@ -243,7 +205,7 @@ function startFarm()
                 local modelName = obj.Name
                 if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
                     local hum = obj:FindFirstChild("Humanoid")
-                    val hrp = obj:FindFirstChild("HumanoidRootPart")
+                    local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                     if hum and hrp and hum.Health > 0 then
                         local distance = (hrp.Position - playerHrp.Position).Magnitude
@@ -259,9 +221,19 @@ function startFarm()
     end
 
     local function getTarget()
-        -- ค้นหาตามลำดับความสำคัญเมื่อตีไม่เข้า (BOSS -> HEART -> MINION)
-        local bossModel, heartModel, minionModel = nil, nil, nil
+        if currentTargetModel and currentTargetModel.Parent then
+            local hum = currentTargetModel:FindFirstChild("Humanoid")
+            if hum and hum.Health > 0 then
+                local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    lastFoundMonsterTime = tick()
+                    return hrp, hum
+                end
+            end
+        end
 
+        currentTargetModel = nil
+        
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local modelName = obj.Name
@@ -273,38 +245,14 @@ function startFarm()
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                 if hum and hrp and hum.Health > 0 then
-                    local lowerName = modelName:lower()
-                    if lowerName:find("heart") then
-                        heartModel = obj
-                    elseif lowerName:find("minion") then
-                        minionModel = obj
-                    else
-                        bossModel = obj
+                    if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
+                        currentTargetModel = obj
+                        lastFoundMonsterTime = tick()
+                        return hrp, hum
                     end
                 end
             end
         end
-
-        local selectedObj = nil
-        if targetPriorityState == "HEART" and heartModel then
-            selectedObj = heartModel
-        elseif targetPriorityState == "MINION" and minionModel then
-            selectedObj = minionModel
-        else
-            selectedObj = bossModel or heartModel or minionModel
-        end
-
-        if selectedObj then
-            local hum = selectedObj:FindFirstChild("Humanoid")
-            local hrp = selectedObj:FindFirstChild("HumanoidRootPart")
-            if hum and hrp then
-                currentTargetModel = selectedObj
-                lastFoundMonsterTime = tick()
-                return hrp, hum
-            end
-        end
-
-        currentTargetModel = nil
         return nil, nil
     end
 
@@ -359,11 +307,6 @@ function startFarm()
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                -- ตรวจสอบการลดลงของเลือดเป้าหมายเพื่อเช็คว่าตีเข้าหรือไม่
-                if lastTargetHealth == -1 then
-                    lastTargetHealth = targetHum.Health
-                end
-
                 local isReady, readyTools = checkSkillsReady()
 
                 -- เริ่มต้นลำดับการโจมตีเมื่อสกิลพร้อม และอยู่ในสถานะรอคูลดาวน์บนฟ้า
@@ -371,9 +314,7 @@ function startFarm()
                     farmState = "ATTACK"
 
                     task.spawn(function()
-                        local healthBeforeAttack = targetHum.Health
-
-                        -- Step 1: ปล่อยสกิลครบที่ความสูง 25
+                        -- Step 1: ปล่อยสกิลครบที่ความสูง 20 (ตำแหน่งการหมุนจะถูกควบคุมใน Heartbeat)
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
@@ -395,45 +336,22 @@ function startFarm()
                             end
                         end
 
-                        -- Step 2: ตีธรรมดาปิดท้าย (ทำงานตามค่า USE_NORMAL_ATTACK)
-                        if USE_NORMAL_ATTACK then
-                            local currentChar = LocalPlayer.Character
-                            if currentChar then
-                                local equippedTool = currentChar:FindFirstChildOfClass("Tool")
-                                if equippedTool then
-                                    equippedTool:Activate()
-                                end
+                        -- ตีธรรมดาปิดท้าย
+                        local currentChar = LocalPlayer.Character
+                        if currentChar then
+                            local equippedTool = currentChar:FindFirstChildOfClass("Tool")
+                            if equippedTool then
+                                equippedTool:Activate()
                             end
                         end
 
                         task.wait(0.2)
 
-                        -- ตรวจสอบผลลัพธ์การโจมตี (ถ้าเลือดไม่ลดหลังผ่านรอบสกิล)
-                        task.wait(0.5)
-                        if targetHum and targetHum.Parent then
-                            if math.abs(targetHum.Health - healthBeforeAttack) < 1 then
-                                failDamageCount = failDamageCount + 1
-                                if failDamageCount >= 2 then
-                                    failDamageCount = 0
-                                    if targetPriorityState == "BOSS" then
-                                        targetPriorityState = "HEART" -- เปลี่ยนไปตีหัวใจ
-                                    elseif targetPriorityState == "HEART" then
-                                        targetPriorityState = "MINION" -- เปลี่ยนไปตีมอนธรรมดา
-                                    else
-                                        targetPriorityState = "BOSS"
-                                        trySwapCharacter() -- ถ้าตีไม่เข้าทุกอย่าง ให้สลับตัวละครถัดไป
-                                    end
-                                end
-                            else
-                                failDamageCount = 0 -- ถ้าตีเข้า รีเซ็ตตัวนับ
-                            end
-                        end
-
-                        -- Step 3: วาปขึ้นความสูง 35 เพื่อลอยนิ่งพักจังหวะ 0.35 วินาที
+                        -- Step 2: วาปขึ้นความสูง 35 เพื่อลอยนิ่งพักจังหวะ 0.35 วินาที
                         farmState = "TRANSITION"
                         task.wait(0.35)
 
-                        -- Step 4: วาปขึ้นไปรอคูลดาวน์บนฟ้า
+                        -- Step 3: วาปขึ้นไปรอคูลดาวน์บนฟ้า (ความสูง 80, 50, 70)
                         heightIndex = 1
                         currentHoverHeight = hoverHeights[1]
                         lastHeightChange = tick()
@@ -446,7 +364,7 @@ function startFarm()
                 local orbitPos
 
                 if farmState == "ATTACK" then
-                    -- ช่วงโจมตี: หมุนควงรอบตัวมอนสเตอร์ที่ความสูง 25
+                    -- ช่วงโจมตี: หมุนควงรอบตัวมอนสเตอร์ที่ความสูง 20
                     local timeNow = tick()
                     local radius = 18 
                     local speed = 3   
@@ -461,7 +379,7 @@ function startFarm()
                     orbitPos = targetPos + Vector3.new(0, 35, 0)
 
                 else -- farmState == "HOVER"
-                    -- ช่วงรอคูลดาวน์: ลอยนิ่งเหนือหัว และสลับความสูงระหว่าง 120, 40, 70 ทุกๆ 1 วินาที
+                    -- ช่วงรอคูลดาวน์: ลอยนิ่งเหนือหัว และสลับความสูงระหว่าง 80, 50, 70 ทุกๆ 1 วินาที
                     if tick() - lastHeightChange >= 1 then
                         heightIndex = (heightIndex % #hoverHeights) + 1
                         currentHoverHeight = hoverHeights[heightIndex]
@@ -475,8 +393,6 @@ function startFarm()
 
             else
                 farmState = "HOVER"
-                targetPriorityState = "BOSS"
-                failDamageCount = 0
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
@@ -515,4 +431,29 @@ task.spawn(function()
                         for i = 5, 1, -1 do
                             if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
                             timerLabel.Text = "Starting in: " .. i .. "s"
-        
+                            task.wait(1)
+                        end
+                        
+                        if getgenv().AutoCreateAndStart and game.PlaceId == TARGET_PLACE_ID then
+                            timerLabel.Text = "Starting Game..."
+                            startDungeonRemote:FireServer()
+                            task.wait(3)
+                        end
+                    end
+                end)
+            else
+                timerLabel.Text = "In Dungeon / Farming"
+                if not getgenv().DungeonFarmLoop then
+                    task.defer(startFarm)
+                end
+            end
+        else
+            timerLabel.Text = "Status: OFF"
+        end
+        task.wait(2)
+    end
+end)
+
+if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
+    task.defer(startFarm)
+end
