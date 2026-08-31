@@ -1,4 +1,4 @@
-local TARGET_PLACE_ID = 77649408247578
+Local TARGET_PLACE_ID = 77649408247578
 
 local selectedMap = "The Underworld"
 local selectedDifficulty = "Insane"
@@ -44,9 +44,9 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm (Advanced)"
+titleLabel.Text = "Dungeon Auto Farm (Orbit)"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 12
+titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
@@ -187,11 +187,7 @@ function startFarm()
     local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
     local isDodgingBoss = false
-    
-    -- ตัวแปรควบคุมคอมโบรูปแบบการเคลื่อนที่และการใช้สกิล
-    local comboPhase = 1 -- 1 = ล็อคใต้ตัว/ยิงชุดบน, 2 = หมุนวนรอบตัวมอนสเตอร์
-    local phaseStartTime = tick()
-    local orbitAngle = 0
+    local orbitAngle = 0 -- ตัวแปรเก็บองศาสำหรับการหมุนวน
 
     local function getTarget()
         if currentTarget and currentTarget.Parent then
@@ -232,7 +228,7 @@ function startFarm()
         return nil
     end
 
-    getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
+    getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function(dt)
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
         pcall(function()
@@ -249,38 +245,25 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                -- เช็คบอสด้านบนเพื่อหลบ
+                local safeHeight = 22
                 if workspace:FindFirstChild("bossShot") then
+                    safeHeight = 55
                     isDodgingBoss = true
                 else
                     isDodgingBoss = false
                 end
 
-                -- สลับ Phase ทุกๆ 4 วินาที หรือเมื่อครบเงื่อนไขคอมโบสกิล
-                if tick() - phaseStartTime > 4.5 then
-                    comboPhase = (comboPhase == 1) and 2 or 1
-                    phaseStartTime = tick()
-                end
+                -- คำนวณการหมุนวนรอบเป้าหมาย (Orbiting)
+                orbitAngle = orbitAngle + (dt * 3) -- ความเร็วในการหมุน (ปรับเลข 3 มาก/น้อยได้ตามต้องการ)
+                local orbitRadius = 15 -- ระยะห่างจากมอนสเตอร์เวลารัศมีวน
+                local offsetX = math.cos(orbitAngle) * orbitRadius
+                local offsetZ = math.sin(orbitAngle) * orbitRadius
 
-                if isDodgingBoss then
-                    -- บินหลบสูง
-                    local safePos = targetHrp.Position + Vector3.new(0, 50, 0)
-                    hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
-                elseif comboPhase == 1 then
-                    -- Phase 1: ล็อคตำแหน่งด้านใต้ตัวมอนสเตอร์ (ระยะปลอดภัยด้านล่าง)
-                    local safeHeight = 15
-                    local safePos = targetHrp.Position + Vector3.new(0, safeHeight, 0)
-                    hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
-                else
-                    -- Phase 2: หมุนวนรอบตัวมอนสเตอร์ (Circle Orbit) พร้อมหันหน้าเข้าหามอนสเตอร์ตลอดเวลา
-                    orbitAngle = orbitAngle + (RunService.Heartbeat:Wait() * 3) -- ความเร็วในการหมุน
-                    local radius = 18 -- รัศมีวงกลมรอบมอนสเตอร์
-                    local offsetX = math.cos(orbitAngle) * radius
-                    local offsetZ = math.sin(orbitAngle) * radius
-                    
-                    local orbitPos = targetHrp.Position + Vector3.new(offsetX, 5, offsetZ)
-                    hrp.CFrame = CFrame.lookAt(orbitPos, targetHrp.Position)
-                end
+                -- ตำแหน่งใหม่ที่จะให้ตัวละครบินไป (วนรอบตัวมอนสเตอร์ และอยู่สูงขึ้นไป)
+                local targetPos = targetHrp.Position + Vector3.new(offsetX, safeHeight, offsetZ)
+                
+                -- ทำให้ตัวละครบินไปตำแหน่งวงโคจร พร้อมกับ "ก้มหน้ามองลงมาที่มอนสเตอร์" เพื่อปล่อยสกิลใส่
+                hrp.CFrame = CFrame.lookAt(targetPos, targetHrp.Position)
             else
                 isDodgingBoss = false
                 if tick() - lastFoundMonsterTime > 1.5 then
@@ -290,7 +273,6 @@ function startFarm()
         end)
     end)
 
-    -- ระบบจัดการการใช้สกิลตามคอมโบ (เช่น Q, E สลับชุด)
     task.spawn(function()
         while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             task.wait(0.05)
@@ -314,7 +296,6 @@ function startFarm()
                             local cd = item:FindFirstChild("cooldown")
                             if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                                 if cd.Value <= 0.1 then
-                                    -- กดสกิลตามจังหวะ slot
                                     pressKey(tostring(slot.Value))
                                     lastSkillTime = tick()
                                     return
