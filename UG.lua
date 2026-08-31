@@ -3,7 +3,6 @@ local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "King's Castle"
 local selectedDifficulty = "Nightmare"
 
--- ตั้งค่าเปิดใช้งานระบบ
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
@@ -19,7 +18,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- ==================== GUI (มุมขวาบน) ====================
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DungeonFarmGui"
+screenGui.Name = "CleanDungeonGui"
 screenGui.ResetOnSpawn = false
 if syn and syn.protect_gui then
     syn.protect_gui(screenGui)
@@ -44,21 +43,21 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm"
+titleLabel.Text = "Clean Auto Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
-local timerLabel = Instance.new("TextLabel")
-timerLabel.Size = UDim2.new(1, 0, 0, 20)
-timerLabel.Position = UDim2.new(0, 0, 0, 25)
-timerLabel.BackgroundTransparency = 1
-timerLabel.Text = "Status: Ready"
-timerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-timerLabel.TextSize = 11
-timerLabel.Font = Enum.Font.SourceSans
-timerLabel.Parent = mainFrame
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, 0, 0, 20)
+statusLabel.Position = UDim2.new(0, 0, 0, 25)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Text = "Status: Ready"
+statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+statusLabel.TextSize = 11
+statusLabel.Font = Enum.Font.SourceSans
+statusLabel.Parent = mainFrame
 
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(0.9, 0, 0, 38)
@@ -81,20 +80,13 @@ mainFrame.InputBegan:Connect(function(input)
         dragging = true
         dragStart = input.Position
         startPos = mainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
     end
 end)
-
 mainFrame.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
         dragInput = input
     end
 end)
-
 UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
@@ -111,42 +103,19 @@ toggleButton.MouseButton1Click:Connect(function()
     if getgenv().AutoFarmEnabled then
         toggleButton.Text = "Status: ON"
         toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
-        timerLabel.Text = "Status: Ready"
+        statusLabel.Text = "Status: Ready"
         if game.PlaceId ~= TARGET_PLACE_ID then
             task.defer(startFarm)
         end
     else
         toggleButton.Text = "Status: OFF"
         toggleButton.BackgroundColor3 = Color3.fromRGB(205, 50, 50)
-        timerLabel.Text = "Paused"
+        statusLabel.Text = "Paused"
         stopFarm()
     end
 end)
 
--- ==================== ระบบหลักของสคริปต์ ====================
-
-task.spawn(function()
-    pcall(function()
-        local errorPrompt = CoreGui:FindFirstChild("RobloxPromptGui", true)
-        if errorPrompt then
-            errorPrompt.DescendantAdded:Connect(function(subChild)
-                if subChild.Name == "ErrorTitle" then
-                    task.wait(2)
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-                end
-            end)
-        end
-    end)
-    
-    while true do
-        task.wait(5)
-        pcall(function()
-            if not LocalPlayer or not LocalPlayer.Parent then
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-            end
-        end)
-    end
-end)
+-- ==================== ระบบฟังก์ชันหลัก ====================
 
 local function pressKey(keyStr)
     local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
@@ -159,18 +128,6 @@ local function pressKey(keyStr)
     end
 end
 
-local function tryStartGame()
-    pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("remotes")
-        if remotes then
-            local changeStartValue = remotes:FindFirstChild("changeStartValue")
-            if changeStartValue and changeStartValue:IsA("RemoteEvent") then
-                changeStartValue:FireServer()
-            end
-        end
-    end)
-end
-
 function stopFarm()
     if getgenv().DungeonFarmLoop then
         getgenv().DungeonFarmLoop:Disconnect()
@@ -180,40 +137,31 @@ end
 
 function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then return end
-
     stopFarm()
 
-    local currentTargetModel = nil
-    local lastFoundMonsterTime = tick()
+    local currentTarget = nil
+    local lastMonsterTime = tick()
 
+    -- ค้นหามอนสเตอร์ที่ยังมีชีวิต
     local function getTarget()
-        if currentTargetModel and currentTargetModel.Parent then
-            local hum = currentTargetModel:FindFirstChild("Humanoid")
-            if hum and hum.Health > 0 then
-                local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    lastFoundMonsterTime = tick()
-                    return hrp, hum
-                end
+        if currentTarget and currentTarget.Parent then
+            local hum = currentTarget:FindFirstChild("Humanoid")
+            local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
+            if hum and hrp and hum.Health > 0 then
+                lastMonsterTime = tick()
+                return hrp, hum
             end
         end
 
-        currentTargetModel = nil
-        
+        currentTarget = nil
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                local modelName = obj.Name
-                if modelName:find("_reyillsPreview") or modelName:find("Preview") then
-                    continue
-                end
-
-                local hum = obj:FindFirstChild("Humanoid")
-                local hrp = obj:FindFirstChild("HumanoidRootPart")
-
-                if hum and hrp and hum.Health > 0 then
-                    if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
-                        currentTargetModel = obj
-                        lastFoundMonsterTime = tick()
+                if not obj.Name:find("Preview") then
+                    local hum = obj:FindFirstChild("Humanoid")
+                    local hrp = obj:FindFirstChild("HumanoidRootPart")
+                    if hum and hrp and hum.Health > 0 then
+                        currentTarget = obj
+                        lastMonsterTime = tick()
                         return hrp, hum
                     end
                 end
@@ -222,7 +170,8 @@ function startFarm()
         return nil, nil
     end
 
-    local function getSkillTool(keyName)
+    -- เช็กสถานะคูลดาวน์สกิล Q
+    local function isSkillReady()
         local items = {}
         if LocalPlayer:FindFirstChild("Backpack") then
             for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
@@ -234,20 +183,12 @@ function startFarm()
         for _, item in ipairs(items) do
             if item:IsA("Tool") then
                 local slot = item:FindFirstChild("abilitySlot")
-                if slot and slot:IsA("ValueBase") and tostring(slot.Value):upper() == keyName:upper() then
-                    return item
+                if slot and tostring(slot.Value):upper() == "Q" then
+                    local cd = item:FindFirstChild("cooldown")
+                    if cd and cd.Value <= 0.1 then
+                        return true
+                    end
                 end
-            end
-        end
-        return nil
-    end
-
-    local function checkSkillReady(keyName)
-        local tool = getSkillTool(keyName)
-        if tool then
-            local cd = tool:FindFirstChild("cooldown")
-            if cd and cd:IsA("ValueBase") and cd.Value <= 0.1 then
-                return true
             end
         end
         return false
@@ -259,42 +200,49 @@ function startFarm()
         pcall(function()
             local char = LocalPlayer.Character
             if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
-
             local hrp = char:FindFirstChild("HumanoidRootPart")
             local humanoid = char:FindFirstChild("Humanoid")
             if not hrp or not humanoid then return end
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                -- เดินเข้าหาระยะประชิดปกติบนพื้นดิน (ให้ Humanoid ควบคุมการเคลื่อนที่เพื่อผ่าน Ground Check)
-                local targetPos = targetHrp.Position
-                humanoid:MoveTo(targetPos - (targetHrp.CFrame.LookVector * 6))
+                -- ลอยตัวเหนือหัวมอนสเตอร์เล็กน้อยแบบปลอดภัย (ระยะสูง 15 หน่วย) มองลงมาที่มอน
+                local hoverPos = targetHrp.Position + Vector3.new(0, 15, 0)
+                hrp.CFrame = CFrame.lookAt(hoverPos, targetHrp.Position)
 
-                -- เช็กหากสกิล Q พร้อม ให้จำลองการยืนบนพื้นและกดสกิล
-                if checkSkillReady("Q") then
-                    -- สั่งให้ตัวละครกดกระโดดเล็กน้อยเพื่อให้เกมบันทึกสถานะการเหยียบพื้น (Ground State) ก่อนกดสกิล
+                -- เทคนิคหลอกระบบเกม: เซ็ตความเร็วเป็น 0 เพื่อไม่ให้ตัวละครสะบัด แต่คงสถานะฟิสิกส์ปกติ
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+
+                -- ถือโอกาสกดสกิล Q เมื่อพร้อม
+                if isSkillReady() then
+                    -- จำลองกระโดดสั้นๆ หรือสั่งให้ Humanoid อยู่ในสถานะปล่อยสกิลบนพื้น
                     humanoid.Jump = true
-                    task.wait(0.1)
-                    
+                    task.wait(0.05)
                     pressKey("Q")
-                    task.wait(0.5) -- รอจังหวะออกสกิล
+                    task.wait(0.3)
                 end
-
             else
-                if tick() - lastFoundMonsterTime > 1.5 then
-                    tryStartGame()
+                -- ถ้าหามอนไม่เจอเกิน 1.5 วินาที ให้วิ่งสแตนด์บายรอ
+                if tick() - lastMonsterTime > 1.5 then
+                    pcall(function()
+                        local remotes = ReplicatedStorage:FindFirstChild("remotes")
+                        if remotes and remotes:FindFirstChild("changeStartValue") then
+                            remotes.changeStartValue:FireServer()
+                        end
+                    end)
                 end
             end
         end)
     end)
 end
 
+-- ==================== ระบบเข้าด่าน / สร้างห้อง ====================
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
             if game.PlaceId == TARGET_PLACE_ID then
                 pcall(function()
-                    timerLabel.Text = "Waiting for remotes..."
+                    statusLabel.Text = "Waiting for remotes..."
                     local remotes = ReplicatedStorage:WaitForChild("remotes", 10)
                     if not remotes then return end
 
@@ -302,42 +250,46 @@ task.spawn(function()
                     local startDungeonRemote = remotes:FindFirstChild("startDungeon")
 
                     if createLobbyRemote then
-                        timerLabel.Text = "Creating Lobby..."
-                        local args = {
-                            selectedMap,
-                            selectedDifficulty,
-                            0,
-                            false,
-                            false,
-                            false
-                        }
-                        createLobbyRemote:InvokeServer(unpack(args))
+                        statusLabel.Text = "Creating Lobby..."
+                        createLobbyRemote:InvokeServer(selectedMap, selectedDifficulty, 0, false, false, false)
                         task.wait(1.5)
                     end
 
                     if startDungeonRemote then
                         for i = 5, 1, -1 do
                             if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
-                            timerLabel.Text = "Starting in: " .. i .. "s"
+                            statusLabel.Text = "Starting in: " .. i .. "s"
                             task.wait(1)
                         end
                         
                         if getgenv().AutoCreateAndStart and game.PlaceId == TARGET_PLACE_ID then
-                            timerLabel.Text = "Starting Game..."
+                            statusLabel.Text = "Starting Game..."
                             startDungeonRemote:FireServer()
                             task.wait(3)
                         end
                     end
                 end)
             else
-                timerLabel.Text = "In Dungeon / Farming"
+                statusLabel.Text = "In Dungeon / Farming"
                 
-                local checkMonsterTime = tick()
+                -- หน่วงรอ 5 วินาทีก่อนเริ่มฟาร์มหากยังไม่พบมอนสเตอร์ในแมพ
+                local checkTimer = tick()
                 while game.PlaceId ~= TARGET_PLACE_ID and getgenv().AutoCreateAndStart do
-                    local _, hum = getTarget()
+                    local _, hum = (function()
+                        for _, obj in ipairs(workspace:GetDescendants()) do
+                            if obj:IsA("Model" ) and obj ~= LocalPlayer.Character then
+                                local h = obj:FindFirstChild("Humanoid")
+                                if h and h.Health > 0 and not obj.Name:find("Preview") then
+                                    return obj:FindFirstChild("HumanoidRootPart"), h
+                                end
+                            end
+                        end
+                        return nil, nil
+                    end)()
+
                     if hum then break end
-                    if tick() - checkMonsterTime >= 5 then
-                        timerLabel.Text = "Waiting for monsters..."
+                    if tick() - checkTimer >= 5 then
+                        statusLabel.Text = "Waiting for monsters..."
                         break
                     end
                     task.wait(0.5)
@@ -348,7 +300,7 @@ task.spawn(function()
                 end
             end
         else
-            timerLabel.Text = "Status: OFF"
+            statusLabel.Text = "Status: OFF"
         end
         task.wait(2)
     end
