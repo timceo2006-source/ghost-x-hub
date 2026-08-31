@@ -15,7 +15,6 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local TeleportService = game:GetService("TeleportService")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ==================== GUI (มุมขวาบน) ====================
@@ -186,10 +185,6 @@ function startFarm()
 
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
-    
-    local farmState = "HOVER"
-    local lastToggleTime = tick()
-    local togglePosFlag = false
 
     local function getTarget()
         if currentTargetModel and currentTargetModel.Parent then
@@ -247,17 +242,6 @@ function startFarm()
         return nil
     end
 
-    local function isSkillOnCooldown(keyName)
-        local tool = getSkillTool(keyName)
-        if tool then
-            local cd = tool:FindFirstChild("cooldown")
-            if cd and cd:IsA("ValueBase") then
-                return cd.Value > 0.2
-            end
-        end
-        return false
-    end
-
     local function checkSkillReady(keyName)
         local tool = getSkillTool(keyName)
         if tool then
@@ -269,12 +253,6 @@ function startFarm()
         return false
     end
 
-    local function smoothMoveTo(hrp, targetCFrame)
-        local tweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Linear)
-        local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
-        tween:Play()
-    end
-
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
@@ -283,89 +261,26 @@ function startFarm()
             if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
 
             local hrp = char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
+            local humanoid = char:FindFirstChild("Humanoid")
+            if not hrp or not humanoid then return end
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                -- เริ่มคอมโบเมื่อสกิล Q พร้อมและสถานะเป็น HOVER
-                if checkSkillReady("Q") and farmState == "HOVER" then
-                    farmState = "COMBO_FRONT_Q"
-
-                    task.spawn(function()
-                        local initialHealth = targetHum.Health
-
-                        -- 1. เคลื่อนที่ไปด้านหน้ามอนสเตอร์ แล้วกด Q
-                        farmState = "FRONT_Q"
-                        task.wait(0.2)
-                        pressKey("Q")
-
-                        local waitTime = tick()
-                        while not isSkillOnCooldown("Q") and targetHum.Health >= initialHealth do
-                            task.wait(0.05)
-                            if (tick() - waitTime) > 1.5 then break end
-                        end
-                        task.wait(0.2)
-
-                        initialHealth = targetHum.Health
-
-                        -- 2. เคลื่อนที่ไปด้านหลังมอนสเตอร์
-                        farmState = "BACK_CHECK"
-                        task.wait(0.2)
-                        
-                        local waitTime2 = tick()
-                        while targetHum.Health >= initialHealth do
-                            task.wait(0.05)
-                            if (tick() - waitTime2) > 1.5 then break end
-                        end
-                        task.wait(0.2)
-
-                        -- 3. เข้าสู่โหมดหลบเลี่ยง
-                        farmState = "EVADE_HOVER"
-                        lastToggleTime = tick()
-                        togglePosFlag = false
-                    end)
-                end
-
+                -- เดินเข้าหาระยะประชิดปกติบนพื้นดิน (ให้ Humanoid ควบคุมการเคลื่อนที่เพื่อผ่าน Ground Check)
                 local targetPos = targetHrp.Position
-                local targetLookVector = targetHrp.CFrame.LookVector
-                local destCFrame
+                humanoid:MoveTo(targetPos - (targetHrp.CFrame.LookVector * 6))
 
-                if farmState == "FRONT_Q" then
-                    destCFrame = CFrame.lookAt(targetPos - (targetLookVector * 10) + Vector3.new(0, 3, 0), targetPos)
-                    smoothMoveTo(hrp, destCFrame)
-                    return
-
-                elseif farmState == "BACK_CHECK" then
-                    destCFrame = CFrame.lookAt(targetPos + (targetLookVector * 10) + Vector3.new(0, 3, 0), targetPos)
-                    smoothMoveTo(hrp, destCFrame)
-                    return
-
-                elseif farmState == "EVADE_HOVER" then
-                    if tick() - lastToggleTime >= 1 then
-                        togglePosFlag = not togglePosFlag
-                        lastToggleTime = tick()
-                    end
-
-                    if togglePosFlag then
-                        destCFrame = CFrame.lookAt(targetPos + Vector3.new(0, 45, 0), targetPos)
-                    else
-                        destCFrame = CFrame.lookAt(targetPos - Vector3.new(0, 15, 0), targetPos)
-                    end
-
-                    smoothMoveTo(hrp, destCFrame)
-
-                    if checkSkillReady("Q") then
-                        farmState = "HOVER"
-                    end
-                    return
-
-                else
-                    destCFrame = CFrame.lookAt(targetPos + Vector3.new(0, 30, 0), targetPos)
-                    smoothMoveTo(hrp, destCFrame)
+                -- เช็กหากสกิล Q พร้อม ให้จำลองการยืนบนพื้นและกดสกิล
+                if checkSkillReady("Q") then
+                    -- สั่งให้ตัวละครกดกระโดดเล็กน้อยเพื่อให้เกมบันทึกสถานะการเหยียบพื้น (Ground State) ก่อนกดสกิล
+                    humanoid.Jump = true
+                    task.wait(0.1)
+                    
+                    pressKey("Q")
+                    task.wait(0.5) -- รอจังหวะออกสกิล
                 end
 
             else
-                farmState = "HOVER"
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
