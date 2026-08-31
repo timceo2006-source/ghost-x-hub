@@ -310,6 +310,7 @@ function startFarm()
                     farmState = "ATTACK"
 
                     task.spawn(function()
+                        -- ใช้สกิลทั้งหมดที่พร้อม
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
@@ -331,18 +332,29 @@ function startFarm()
                             end
                         end
 
-                        local currentChar = LocalPlayer.Character
-                        if currentChar then
-                            local equippedTool = currentChar:FindFirstChildOfClass("Tool")
-                            if equippedTool then
-                                equippedTool:Activate()
+                        -- ตีธรรมดาต่อเนื่องและเช็กเลือดมอนสเตอร์จนกว่าจะลดลงหรือใช้เวลาพอสมควร
+                        local initialHealth = targetHum.Health
+                        local attackStartTime = tick()
+
+                        while farmState == "ATTACK" and targetHum and targetHum.Health > 0 do
+                            local currentChar = LocalPlayer.Character
+                            if currentChar then
+                                local equippedTool = currentChar:FindFirstChildOfClass("Tool")
+                                if equippedTool then
+                                    equippedTool:Activate()
+                                end
                             end
+
+                            -- ถ้าเลือดลดลงแล้ว (แปลว่าดาเมจเข้า) หรือตีต่อเนื่องครบ 1.5 วินาที ให้หลุดลูปตีธรรมดา
+                            if targetHum.Health < initialHealth or (tick() - attackStartTime) > 1.5 then
+                                break
+                            end
+                            task.wait(0.15)
                         end
 
-                        task.wait(0.2)
-
+                        -- ช่วงพักจังหวะสั้นๆ ก่อนลอยขึ้นฟ้า
                         farmState = "TRANSITION"
-                        task.wait(0.35)
+                        task.wait(0.4)
 
                         heightIndex = 1
                         currentHoverHeight = hoverHeights[1]
@@ -355,7 +367,6 @@ function startFarm()
                 local orbitPos
 
                 if farmState == "ATTACK" then
-                    -- ใช้พิกัดที่ถูกต้องจากตัวเก่าเพื่อให้ตีโดนปกติ
                     local timeNow = tick()
                     local radius = 18 
                     local speed = 3   
