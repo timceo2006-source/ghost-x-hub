@@ -44,9 +44,9 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm"
+titleLabel.Text = "Dungeon Auto Farm (Orbit)"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 13
+titleLabel.TextSize = 12
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
@@ -228,7 +228,6 @@ function startFarm()
         return nil
     end
 
-    -- ใช้ลูปแบบเสถียรสำหรับการหมุนวนรอบมอนสเตอร์
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
@@ -254,7 +253,7 @@ function startFarm()
                     isDodgingBoss = false
                 end
 
-                -- คำนวณการหมุนวงกลมรอบมอนสเตอร์ด้านบน
+                -- คำนวณการหมุนวนรอบตัวมอนสเตอร์บนฟ้าอย่างต่อเนื่อง
                 orbitAngle = (orbitAngle + 0.05) % (math.pi * 2)
                 local orbitRadius = 16
                 local offsetX = math.cos(orbitAngle) * orbitRadius
@@ -271,6 +270,7 @@ function startFarm()
         end)
     end)
 
+    -- ระบบกดสกิลและโจมตีอัตโนมัติ
     task.spawn(function()
         while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             task.wait(0.05)
