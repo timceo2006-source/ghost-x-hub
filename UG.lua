@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "King's Castle"
-local selectedDifficulty = "Nightmare"
+local selectedMap = "The Underworld"
+local selectedDifficulty = "Insane"
 
 -- ตั้งค่าให้เปิดทั้งฟาร์มและออโต้สร้างห้องตั้งแต่เริ่มรันสคริปต์
 getgenv().AutoCreateAndStart = true
@@ -187,7 +187,8 @@ function startFarm()
     local lastFoundMonsterTime = tick()
     local initialTargetHealth = nil
     local attackAttemptTime = nil
-    local isDiving = false -- สถานะล็อกการลงไปปล่อยชุดสกิล
+    local isDiving = false
+    local currentDynamicHeight = 60 -- ความสูงเริ่มต้นสำหรับการรอคูลดาวน์
     local ignoredMonsters = {}
 
     local function isIgnored(model)
@@ -244,7 +245,6 @@ function startFarm()
         return nil, nil
     end
 
-    -- ตรวจสอบว่าสกิลพร้อมใช้ครบตามเงื่อนไขหรือไม่ (อย่างน้อย 2 สกิล หรือทุกสกิลที่มี)
     local function checkSkillsReady()
         local readyTools = {}
         local totalSkills = 0
@@ -294,27 +294,24 @@ function startFarm()
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                local safeHeight = 60 
-                local diveHeight = 25 
-                
                 local isReady, readyTools = checkSkillsReady()
 
-                -- หากสกิลพร้อมครบ 2 อัน และยังไม่ได้อยู่ในสถานะดำน้ำโจมตี ให้เริ่มลงไปปล่อยสกิล
+                -- เงื่อนไขเมื่อสกิลพร้อม 2 อัน ให้ทำการโจมตีตาม Step ความสูงที่กำหนด
                 if isReady and not isDiving then
                     isDiving = true
                     attackAttemptTime = tick()
                     initialTargetHealth = targetHum.Health
 
                     task.spawn(function()
-                        -- รอนำตัวละครลงระยะปล่อยสกิล
+                        -- STEP 1: ดิ่งลงไปปล่อยสกิลที่ความสูง 20
+                        currentDynamicHeight = 20
                         task.wait(0.12)
                         
-                        -- กดปล่อยสกิลทั้งหมดที่มีในชุดเดียว
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             if slot and slot:IsA("ValueBase") then
                                 pressKey(tostring(slot.Value))
-                                task.wait(0.08) -- หน่วงเวลาเล็กน้อยเพื่อให้เกมรับคำสั่งสกิลได้ครบถ้วน
+                                task.wait(0.08)
                             end
                         end
                         
@@ -326,12 +323,19 @@ function startFarm()
                             end
                         end
 
-                        task.wait(0.35) -- รอให้แอนิเมชันปล่อยสกิลเสร็จสิ้น
-                        isDiving = false -- ถอยกลับขึ้นไปกบดานที่ safeHeight
+                        -- STEP 2: ขึ้นมารอ 1 วินาที ที่ความสูง 30
+                        currentDynamicHeight = 30
+                        task.wait(1)
+
+                        -- STEP 3: ขึ้นไปรอคูลดาวน์ที่ความสูง 60
+                        currentDynamicHeight = 60
+                        isDiving = false
                     end)
                 end
 
-                local currentHeight = isDiving and diveHeight or safeHeight
+                if not isDiving then
+                    currentDynamicHeight = 60
+                end
 
                 local timeNow = tick()
                 local radius = 20 
@@ -342,17 +346,18 @@ function startFarm()
                 local offsetZ = math.sin(angle) * radius
                 
                 local targetPos = targetHrp.Position
-                local orbitPos = targetPos + Vector3.new(offsetX, currentHeight, offsetZ)
+                local orbitPos = targetPos + Vector3.new(offsetX, currentDynamicHeight, offsetZ)
                 
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
-                -- ตรวจสอบว่าหลังจากเริ่มโจมตีผ่านไป 2.5 วินาที เลือดเป้าหมายลดลงบ้างหรือไม่
+                -- เช็คถ้าระบบไม่ทำดาเมจหลังเริ่มโจมตี 2.5 วินาที ให้เปลี่ยนเป้าหมาย
                 if attackAttemptTime and (tick() - attackAttemptTime > 2.5) then
                     if initialTargetHealth and targetHum.Health >= initialTargetHealth then
                         ignoredMonsters[currentTargetModel] = tick() + 15
                         currentTargetModel = nil
                         attackAttemptTime = nil
                         isDiving = false
+                        currentDynamicHeight = 60
                     else
                         attackAttemptTime = nil
                     end
@@ -360,6 +365,7 @@ function startFarm()
 
             else
                 isDiving = false
+                currentDynamicHeight = 60
                 initialTargetHealth = nil
                 attackAttemptTime = nil
                 if tick() - lastFoundMonsterTime > 1.5 then
