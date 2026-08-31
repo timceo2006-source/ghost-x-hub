@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
 getgenv().AutoFarmEnabled = false
-getgenv().BossDetectorEnabled = false -- ปิดการตรวจจับแบบอัตโนมัติไว้ รอให้กดเปิดหรือรีเฟรช
+getgenv().BossDetectorEnabled = false 
 getgenv().DungeonFarmLoop = nil
 
 local Players = game:GetService("Players")
@@ -35,7 +35,7 @@ MainFrame.Parent = ScreenGui
 MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 MainFrame.BorderSizePixel = 0
 MainFrame.Position = UDim2.new(0.05, 0, 0.15, 0)
-MainFrame.Size = UDim2.new(0, 320, 0, 310) -- ขยายกล่องให้พอดีกับ 3 ปุ่ม
+MainFrame.Size = UDim2.new(0, 320, 0, 310)
 MainFrame.Active = true
 MainFrame.Draggable = true
 
@@ -73,14 +73,13 @@ InfoBox.BorderSizePixel = 0
 InfoBox.Position = UDim2.new(0.05, 0, 0.12, 0)
 InfoBox.Size = UDim2.new(0.9, 0, 0, 85)
 InfoBox.Font = Enum.Font.Code
-InfoBox.Text = "สถานะ: พร้อมใช้งาน\n(กดปุ่มรีเฟรชหรือเปิดสแกนเพื่อค้นหาสกิล)"
+InfoBox.Text = "สถานะ: พร้อมใช้งาน\n(กดรีเฟรชเพื่อสแกนหาพาร์ทสกิล/เส้นแดงใต้เท้า)"
 InfoBox.TextColor3 = Color3.fromRGB(100, 255, 100)
 InfoBox.TextSize = 11
 InfoBox.TextWrapped = true
 InfoBox.TextXAlignment = Enum.TextXAlignment.Left
 InfoBox.TextYAlignment = Enum.TextYAlignment.Top
 
--- ปุ่มที่ 1: เปิด/ปิด ออโต้ฟาร์มดันเจี้ยน
 local AutoFarmBtn = Instance.new("TextButton")
 AutoFarmBtn.Parent = MainFrame
 AutoFarmBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
@@ -92,7 +91,6 @@ AutoFarmBtn.Text = "ออโต้ฟาร์มดันเจี้ยน: �
 AutoFarmBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
 AutoFarmBtn.TextSize = 13
 
--- ปุ่มที่ 2: เปิด/ปิด ตัวตรวจจับสกิลบอส
 local DetectorBtn = Instance.new("TextButton")
 DetectorBtn.Parent = MainFrame
 DetectorBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
@@ -100,11 +98,10 @@ DetectorBtn.BorderSizePixel = 0
 DetectorBtn.Position = UDim2.new(0.05, 0, 0.58, 0)
 DetectorBtn.Size = UDim2.new(0.9, 0, 0, 38)
 DetectorBtn.Font = Enum.Font.SourceSansBold
-DetectorBtn.Text = "ตรวจหาสกิลบอสใกล้ตัว: ปิดอยู่"
+DetectorBtn.Text = "ตรวจหาสกิลบอสใต้เท้า: ปิดอยู่"
 DetectorBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
 DetectorBtn.TextSize = 13
 
--- ปุ่มที่ 3: ปุ่มรีเฟรชข้อมูล (กดสแกนหาครั้งเดียวทันที)
 local RefreshBtn = Instance.new("TextButton")
 RefreshBtn.Parent = MainFrame
 RefreshBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
@@ -116,7 +113,7 @@ RefreshBtn.Text = "🔄 รีเฟรช / สแกนหาสกิลต�
 RefreshBtn.TextColor3 = Color3.fromRGB(255, 255, 0)
 RefreshBtn.TextSize = 13
 
--- ฟังก์ชันสแกนหาสกิลรอบตัว
+-- ฟังก์ชันสแกนหาพาร์ทสกิลหรือเส้นแดงใต้เท้า
 local function scanForSkills()
     local char = LocalPlayer.Character
     if not char then 
@@ -135,20 +132,20 @@ local function scanForSkills()
     for _, folder in ipairs(scanFolders) do
         if folder then
             for _, obj in ipairs(folder:GetDescendants()) do
-                local nameLower = obj.Name:lower()
-                if nameLower:find("shot") or nameLower:find("skill") or nameLower:find("boss") or nameLower:find("attack") or nameLower:find("laser") or nameLower:find("magic") then
-                    if obj:IsA("BasePart") then
+                if obj:IsA("BasePart") then
+                    local nameLower = obj.Name:lower()
+                    local col = obj.Color
+                    
+                    -- เช็คว่าเข้าข่ายสกิลบอส เช่น ชื่อมีคำว่า warning, shot, skill, hit, attack 
+                    -- หรือเช็คว่าเป็นพาร์ทสีแดงเด่นๆ (เช่น แดงจัด R > 0.8, G < 0.2, B < 0.2) ที่โผล่มาใกล้ตัว
+                    local isRedPart = (col.R > 0.7 and col.G < 0.3 and col.B < 0.3)
+                    local hasKeyword = nameLower:find("shot") or nameLower:find("skill") or nameLower:find("warning") or nameLower:find("attack") or nameLower:find("hitbox") or nameLower:find("danger") or nameLower:find("effect")
+
+                    if hasKeyword or isRedPart then
                         local dist = (obj.Position - hrp.Position).Magnitude
-                        if dist <= 50 then
-                            table.insert(detectedSkills, string.format("- %s (ระยะ: %.1fม.)", obj.Name, dist))
-                        end
-                    elseif obj:IsA("Model") then
-                        local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-                        if part then
-                            local dist = (part.Position - hrp.Position).Magnitude
-                            if dist <= 50 then
-                                table.insert(detectedSkills, string.format("- [โมเดล] %s (ระยะ: %.1fม.)", obj.Name, dist))
-                            end
+                        if dist <= 60 then -- รัศมีตรวจจับรอบตัว 60 เมตร
+                            local tag = isRedPart and "[พาร์ทสีแดงเตือนภัย]" or "[พาร์ทสกิล]"
+                            table.insert(detectedSkills, string.format("- %s %s (ระยะ: %.1fม.)", tag, obj.Name, dist))
                         end
                     end
                 end
@@ -157,13 +154,13 @@ local function scanForSkills()
     end
 
     if #detectedSkills > 0 then
-        InfoBox.Text = "🚨 ผลสแกนสกิล/บอสใกล้ตัว:\n" .. table.concat(detectedSkills, "\n")
+        -- ตัดเอาเฉพาะตัวที่เจอเด่นๆ ไม่ให้ข้อความล้น
+        InfoBox.Text = "🚨 ตรวจพบสกิล/เส้นแดงใกล้ตัว:\n" .. table.concat(detectedSkills, "\n")
     else
-        InfoBox.Text = "✅ ปลอดภัย: ไม่พบสกิลรอบตัวในรัศมี 50 เมตร"
+        InfoBox.Text = "✅ ปลอดภัย: ไม่พบพาร์ทสกิลหรือเส้นแดงใต้เท้า"
     end
 end
 
--- ปุ่มรีเฟรช กดปุ่มนี้เพื่อสแกนทันที
 RefreshBtn.MouseButton1Click:Connect(function()
     scanForSkills()
 end)
@@ -203,10 +200,10 @@ local function pressKey(keyStr)
     end
 end
 
--- ลูปตรวจหาสกิลแบบ Real-time (ทำงานเฉพาะตอนกดเปิดสวิตช์ปุ่มที่ 2)
+-- ลูปเช็คสกิลต่อเนื่อง (เมื่อกดเปิดสวิตช์ปุ่มที่ 2)
 task.spawn(function()
     while true do
-        task.wait(0.5)
+        task.wait(0.4)
         if getgenv().BossDetectorEnabled then
             pcall(function()
                 scanForSkills()
@@ -276,13 +273,25 @@ local function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 30
-                if workspace:FindFirstChild("bossShot") or workspace:FindFirstChild("bossSkill") then
+                local safeHeight = 12
+                -- เช็คพาร์ทสกิลหรือบอสช็อตเพื่อบินหลบขึ้นที่สูงอัตโนมัติ
+                local hasSkillNearby = false
+                for _, obj in ipairs(workspace:GetDescendants()) do
+                    if obj:IsA("BasePart") and (obj.Name:lower():find("bossshot") or obj.Name:lower():find("warning") or obj.Name:lower():find("skill")) then
+                        if (obj.Position - hrp.Position).Magnitude < 30 then
+                            hasSkillNearby = true
+                            break
+                        end
+                    end
+                end
+
+                if hasSkillNearby then
                     safeHeight = 50
                     isDodgingBoss = true
                 else
                     isDodgingBoss = false
                 end
+
                 local safePos = targetHrp.Position + Vector3.new(0, safeHeight, 0)
                 hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
             else
@@ -333,7 +342,6 @@ local function startFarm()
     end)
 end
 
--- ปุ่มที่ 1: เปิด/ปิด ออโต้ฟาร์ม
 AutoFarmBtn.MouseButton1Click:Connect(function()
     getgenv().AutoFarmEnabled = not getgenv().AutoFarmEnabled
     if getgenv().AutoFarmEnabled then
@@ -347,15 +355,14 @@ AutoFarmBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ปุ่มที่ 2: เปิด/ปิด ระบบตรวจหาสกิลบอสแบบต่อเนื่อง
 DetectorBtn.MouseButton1Click:Connect(function()
     getgenv().BossDetectorEnabled = not getgenv().BossDetectorEnabled
     if getgenv().BossDetectorEnabled then
-        DetectorBtn.Text = "ตรวจหาสกิลบอสใกล้ตัว: เปิดอยู่"
+        DetectorBtn.Text = "ตรวจหาสกิลบอสใต้เท้า: เปิดอยู่"
         DetectorBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
     else
-        DetectorBtn.Text = "ตรวจหาสกิลบอสใกล้ตัว: ปิดอยู่"
+        DetectorBtn.Text = "ตรวจหาสกิลบอสใต้เท้า: ปิดอยู่"
         DetectorBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-        InfoBox.Text = "สถานะ: ปิดระบบตรวจหาสกิลแบบต่อเนื่องแล้ว"
+        InfoBox.Text = "สถานะ: ปิดการตรวจจับออโต้แล้ว"
     end
 end)
