@@ -3,6 +3,10 @@ local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "King's Castle"
 local selectedDifficulty = "Nightmare"
 
+-- ตั้งค่าฮิตบ็อกซ์
+local HITBOX_RADIUS = 150 -- ระยะขยายฮิตบ็อกซ์รอบตัวผู้เล่น (Studs)
+local HITBOX_SIZE = Vector3.new(60, 60, 60) -- ขนาดฮิตบ็อกซ์ที่ต้องการขยาย
+
 -- ตั้งค่าให้เปิดทั้งฟาร์มและออโต้สร้างห้องตั้งแต่เริ่มรันสคริปต์
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
@@ -202,6 +206,28 @@ function startFarm()
         return false
     end
 
+    -- ฟังก์ชันขยายฮิตบ็อกซ์มอนสเตอร์ทุกตัวในระยะรอบตัวผู้เล่น
+    local function expandNearbyHitboxes(playerHrp)
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) and not isIgnored(obj) then
+                local modelName = obj.Name
+                if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
+                    local hum = obj:FindFirstChild("Humanoid")
+                    local hrp = obj:FindFirstChild("HumanoidRootPart")
+
+                    if hum and hrp and hum.Health > 0 then
+                        local distance = (hrp.Position - playerHrp.Position).Magnitude
+                        if distance <= HITBOX_RADIUS then
+                            hrp.Size = HITBOX_SIZE
+                            hrp.Transparency = 0.8
+                            hrp.CanCollide = false
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     local function getTarget()
         if currentTargetModel and currentTargetModel.Parent and not isIgnored(currentTargetModel) then
             local hum = currentTargetModel:FindFirstChild("Humanoid")
@@ -233,9 +259,6 @@ function startFarm()
                         currentTargetModel = obj
                         initialTargetHealth = hum.Health
                         attackAttemptTime = nil
-                        hrp.Size = Vector3.new(65, 65, 65)
-                        hrp.Transparency = 0.8
-                        hrp.CanCollide = false
                         lastFoundMonsterTime = tick()
                         return hrp, hum
                     end
@@ -245,7 +268,6 @@ function startFarm()
         return nil, nil
     end
 
-    -- ตรวจสอบคูลดาวน์สกิลอย่างแม่นยำ (ต้อง <= 0 รองรับทั้งค่า 0 และค่าติดลบ)
     local function checkSkillsReady()
         local readyTools = {}
         local totalSkills = 0
@@ -264,7 +286,6 @@ function startFarm()
                 local cd = item:FindFirstChild("cooldown")
                 if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                     totalSkills = totalSkills + 1
-                    -- ค่าคูลดาวน์ต้องคูลดาวน์เสร็จสิ้นจริง (<= 0)
                     if cd.Value <= 0 then
                         table.insert(readyTools, item)
                     end
@@ -294,11 +315,13 @@ function startFarm()
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
+            -- ทำงานขยายฮิตบ็อกซ์มอนสเตอร์ทั้งหมดในระยะ
+            expandNearbyHitboxes(hrp)
+
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                -- ต้องรอให้สกิลคูลดาวน์เสร็จครบทุกอันจริงๆ (<= 0) ถึงจะเริ่มลงไปปล่อย
                 if isReady and not isDiving then
                     isDiving = true
                     attackAttemptTime = tick()
@@ -327,7 +350,7 @@ function startFarm()
 
                         -- STEP 2: ขึ้นมารอ 1 วินาที ที่ความสูง 30
                         currentDynamicHeight = 30
-                        task.wait(0.2)
+                        task.wait(1)
 
                         -- STEP 3: ขึ้นไปรอคูลดาวน์ที่ความสูง 60
                         currentDynamicHeight = 60
