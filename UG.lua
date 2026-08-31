@@ -372,11 +372,11 @@ function startFarm()
                     
                     local offsetX = math.cos(angle) * radius
                     local offsetZ = math.sin(angle) * radius
-                    orbitPos = targetPos + Vector3.new(offsetX, 25, offsetZ)
+                    orbitPos = targetPos + Vector3.new(offsetX, 30, radius)
 
                 elseif farmState == "TRANSITION" then
                     -- ช่วงพักจังหวะ: ลอยนิ่งเหนือหัวที่ความสูง 35
-                    orbitPos = targetPos + Vector3.new(0, 35, 0)
+                    orbitPos = targetPos + Vector3.new(0, 45, 0)
 
                 else -- farmState == "HOVER"
                     -- ช่วงรอคูลดาวน์: ลอยนิ่งเหนือหัว และสลับความสูงระหว่าง 80, 50, 70 ทุกๆ 1 วินาที
