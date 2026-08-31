@@ -7,14 +7,6 @@ local selectedDifficulty = "Insane"
 local USE_NORMAL_ATTACK = true -- true = ใช้ตีธรรมดาด้วย, false = ใช้เฉพาะสกิล
 local AUTO_DODGE_ENABLED = true -- เปิด/ปิด ระบบออโต้หลบอัจฉริยะ
 
--- ตั้งค่าเงื่อนไขพิเศษสำหรับบอส
-local BOSS_CONFIGURATIONS = {
-    ["Demon Lord Azrallik"] = {
-        customHoverHeight = 35,
-        skipNormalAttack = false
-    }
-}
-
 -- ตั้งค่าฮิตบ็อกซ์
 local HITBOX_RADIUS = 150
 local HITBOX_SIZE = Vector3.new(20, 20, 20)
@@ -60,7 +52,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm & Dodge"
+titleLabel.Text = "Dungeon Auto Farm & Lock"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -243,7 +235,7 @@ function startFarm()
         end
     end
 
-    -- แก้ไขระบบเลือกเป้าหมาย: ตรวจสอบและให้ความสำคัญกับ "Heart" (หัวใจ) และ "Minion" ก่อนเสมอ
+    -- ระบบเลือกเป้าหมาย: เน้น "Heart" และ "Minion" ก่อนเสมอ
     local function getTarget()
         local heartTarget, heartHrp, heartHum = nil, nil, nil
         local minionTarget, minionHrp, minionHum = nil, nil, nil
@@ -295,7 +287,7 @@ function startFarm()
     end
 
     -- ฟังก์ชันตรวจสอบและกดใช้สกิลทั้งหมด
-    local function executeSkillsAndAttacks(bossConfig)
+    local function executeSkillsAndAttacks()
         local items = {}
         if LocalPlayer:FindFirstChild("Backpack") then
             for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
@@ -317,12 +309,7 @@ function startFarm()
             end
         end
 
-        local shouldAttackNormal = USE_NORMAL_ATTACK
-        if bossConfig and bossConfig.skipNormalAttack ~= nil then
-            shouldAttackNormal = not bossConfig.skipNormalAttack
-        end
-
-        if shouldAttackNormal and LocalPlayer.Character then
+        if USE_NORMAL_ATTACK and LocalPlayer.Character then
             local equippedTool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
             if equippedTool then
                 equippedTool:Activate()
@@ -330,12 +317,11 @@ function startFarm()
         end
     end
 
-    -- ฟังก์ชันคำนวณการหลบอัจฉริยะ (แบบเนียนๆ ไม่กระตุก)
+    -- ฟังก์ชันหลบอัจฉริยะ (มุดลงมาชิดใต้เท้าบอสชั่วคราวเมื่อตรวจพบสัญญาณเตือน)
     local function getDodgeOffset(playerHrp)
         if not AUTO_DODGE_ENABLED then return false, Vector3.new(0, 0, 0) end
 
         local dangerDetected = false
-        local nearestDangerPos = nil
         local minDst = 35
 
         for _, obj in ipairs(workspace:GetDescendants()) do
@@ -347,21 +333,18 @@ function startFarm()
                     local dist = (obj.Position - playerHrp.Position).Magnitude
                     if dist <= minDst then
                         dangerDetected = true
-                        nearestDangerPos = obj.Position
                         minDst = dist
                     end
                 end
             end
         end
 
-        if dangerDetected and nearestDangerPos then
+        if dangerDetected then
             lastDangerTime = tick()
-            local escapeDir = (playerHrp.Position - nearestDangerPos)
-            escapeDir = Vector3.new(escapeDir.X, 0, escapeDir.Z).Unit
-            if escapeDir.Magnitude == 0 then escapeDir = Vector3.new(1, 0, 0) end
-            cachedDodgeShift = (escapeDir * 15) + Vector3.new(0, 28, 0)
+            -- หลบลงมาที่เท้าบอส (จุดบอด) เพื่อไม่ให้โดนสกิลวงกว้าง
+            cachedDodgeShift = Vector3.new(0, 2, 0)
             return true, cachedDodgeShift
-        elseif (tick() - lastDangerTime) < 0.4 then
+        elseif (tick() - lastDangerTime) < 0.5 then
             return true, cachedDodgeShift
         end
 
@@ -387,11 +370,6 @@ function startFarm()
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                local bossConfig = nil
-                if currentTargetModel and BOSS_CONFIGURATIONS[currentTargetModel.Name] then
-                    bossConfig = BOSS_CONFIGURATIONS[currentTargetModel.Name]
-                end
-
                 local isDanger, dodgeShift = getDodgeOffset(hrp)
                 local targetPos = targetHrp.Position
                 local desiredPos
@@ -399,13 +377,17 @@ function startFarm()
                 if isDanger then
                     desiredPos = targetPos + dodgeShift
                 else
-                    local hoverHeight = bossConfig and bossConfig.customHoverHeight or 25
-                    desiredPos = targetPos + Vector3.new(0, hoverHeight, 0)
+                    -- ล็อคเป้าด้านหน้าตรงระดับอกของมอนสเตอร์ (ระยะ 12 หน่วย สูง 4 หน่วย) 
+                    -- ทำให้หันหน้าตรงเข้าหาตัวมอนสเตอร์เป๊ะๆ ยิงสกิลเข้าเป้า 100% ไม่พุ่งลงพื้น
+                    local frontOffset = targetHrp.CFrame.LookVector * -12 + Vector3.new(0, 4, 0)
+                    desiredPos = targetPos + frontOffset
                 end
 
+                -- บังคับให้ตัวละครหันหน้าตรงเข้าหาจุดศูนย์กลางของมอนสเตอร์ตลอดเวลา
                 local targetCFrame = CFrame.lookAt(desiredPos, targetPos)
                 hrp.CFrame = hrp.CFrame:Lerp(targetCFrame, 0.35)
-                executeSkillsAndAttacks(bossConfig)
+                
+                executeSkillsAndAttacks()
 
             else
                 if tick() - lastFoundMonsterTime > 1.5 then
