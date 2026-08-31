@@ -5,7 +5,10 @@ local selectedDifficulty = "Insane"
 
 -- ตั้งค่าเพิ่มเติม
 local USE_NORMAL_ATTACK = true -- true = ใช้ตีธรรมดาด้วย, false = ใช้เฉพาะสกิล
-local AUTO_DODGE_ENABLED = true -- เปิด/ปิด ระบบออโต้หลบอัจฉริยะ
+local AUTO_DODGE_ENABLED = true -- เปิด/ปิด ระบบออโต้หลบอัจฉริยะ (หลบเฉพาะตอนมีอันตรายเข้าใกล้)
+
+-- ตั้งค่าความสูงในการลอยนิ่งๆ เหนือหัวบอส
+local HOVER_HEIGHT = 30
 
 -- ตั้งค่าฮิตบ็อกซ์
 local HITBOX_RADIUS = 150
@@ -52,7 +55,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm & Lock"
+titleLabel.Text = "Dungeon Auto Farm & Hover"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -317,12 +320,13 @@ function startFarm()
         end
     end
 
-    -- ฟังก์ชันหลบอัจฉริยะ (มุดลงมาชิดใต้เท้าบอสชั่วคราวเมื่อตรวจพบสัญญาณเตือน)
+    -- ฟังก์ชันหลบอัจฉริยะ (ตรวจจับสัญญาณอันตรายรอบตัว และหลบเฉพาะตอนมีภัยใกล้ตัว)
     local function getDodgeOffset(playerHrp)
         if not AUTO_DODGE_ENABLED then return false, Vector3.new(0, 0, 0) end
 
         local dangerDetected = false
-        local minDst = 35
+        local nearestDangerPos = nil
+        local minDst = 25 -- ระยะตรวจจับอันตรายรอบตัว
 
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("BasePart") then
@@ -333,18 +337,23 @@ function startFarm()
                     local dist = (obj.Position - playerHrp.Position).Magnitude
                     if dist <= minDst then
                         dangerDetected = true
+                        nearestDangerPos = obj.Position
                         minDst = dist
                     end
                 end
             end
         end
 
-        if dangerDetected then
+        if dangerDetected and nearestDangerPos then
             lastDangerTime = tick()
-            -- หลบลงมาที่เท้าบอส (จุดบอด) เพื่อไม่ให้โดนสกิลวงกว้าง
-            cachedDodgeShift = Vector3.new(0, 2, 0)
+            -- ดีดตัวหลบออกด้านข้างและลอยสูงขึ้นเพื่อพ้นจากรัศมีสกิล
+            local escapeDir = (playerHrp.Position - nearestDangerPos)
+            escapeDir = Vector3.new(escapeDir.X, 0, escapeDir.Z).Unit
+            if escapeDir.Magnitude == 0 then escapeDir = Vector3.new(1, 0, 0) end
+            cachedDodgeShift = (escapeDir * 18) + Vector3.new(0, 15, 0)
             return true, cachedDodgeShift
         elseif (tick() - lastDangerTime) < 0.5 then
+            -- ค้างสถานะหลบชั่วครู่จนกว่าสกิลจะผ่านไป
             return true, cachedDodgeShift
         end
 
@@ -375,15 +384,14 @@ function startFarm()
                 local desiredPos
 
                 if isDanger then
-                    desiredPos = targetPos + dodgeShift
+                    -- ถ้ามีอันตราย พุ่งหลบไปยังตำแหน่งหลบภัย
+                    desiredPos = targetPos + Vector3.new(0, HOVER_HEIGHT, 0) + dodgeShift
                 else
-                    -- ล็อคเป้าด้านหน้าตรงระดับอกของมอนสเตอร์ (ระยะ 12 หน่วย สูง 4 หน่วย) 
-                    -- ทำให้หันหน้าตรงเข้าหาตัวมอนสเตอร์เป๊ะๆ ยิงสกิลเข้าเป้า 100% ไม่พุ่งลงพื้น
-                    local frontOffset = targetHrp.CFrame.LookVector * -12 + Vector3.new(0, 4, 0)
-                    desiredPos = targetPos + frontOffset
+                    -- ถ้าปกติ ไม่มีอันตราย ลอยนิ่งๆ อยู่เหนือหัวบอสตรงๆ เพื่อปล่อยสกิลลงด้านล่าง
+                    desiredPos = targetPos + Vector3.new(0, HOVER_HEIGHT, 0)
                 end
 
-                -- บังคับให้ตัวละครหันหน้าตรงเข้าหาจุดศูนย์กลางของมอนสเตอร์ตลอดเวลา
+                -- หันหน้ามองลงมาที่ตัวบอสเพื่อยิงสกิลใส่ด้านล่าง
                 local targetCFrame = CFrame.lookAt(desiredPos, targetPos)
                 hrp.CFrame = hrp.CFrame:Lerp(targetCFrame, 0.35)
                 
