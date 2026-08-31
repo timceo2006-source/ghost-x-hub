@@ -243,20 +243,8 @@ function startFarm()
         end
     end
 
+    -- แก้ไขระบบเลือกเป้าหมาย: ตรวจสอบและให้ความสำคัญกับ "Heart" (หัวใจ) และ "Minion" ก่อนเสมอ
     local function getTarget()
-        if currentTargetModel and currentTargetModel.Parent then
-            local hum = currentTargetModel:FindFirstChild("Humanoid")
-            if hum and hum.Health > 0 then
-                local hrp = getMonsterRootPart(currentTargetModel)
-                if hrp then
-                    lastFoundMonsterTime = tick()
-                    return hrp, hum
-                end
-            end
-        end
-
-        currentTargetModel = nil
-        
         local heartTarget, heartHrp, heartHum = nil, nil, nil
         local minionTarget, minionHrp, minionHum = nil, nil, nil
         local generalTarget, generalHrp, generalHum = nil, nil, nil
@@ -272,9 +260,10 @@ function startFarm()
                 local hrp = getMonsterRootPart(obj)
 
                 if hum and hrp and hum.Health > 0 then
-                    if modelName:find("Heart") then
+                    local lowerName = modelName:lower()
+                    if lowerName:find("heart") then
                         heartTarget, heartHrp, heartHum = obj, hrp, hum
-                    elseif modelName:find("Minion") then
+                    elseif lowerName:find("minion") then
                         minionTarget, minionHrp, minionHum = obj, hrp, hum
                     else
                         if not generalTarget then
@@ -301,6 +290,7 @@ function startFarm()
             return chosenHrp, chosenHum
         end
 
+        currentTargetModel = nil
         return nil, nil
     end
 
@@ -372,7 +362,6 @@ function startFarm()
             cachedDodgeShift = (escapeDir * 15) + Vector3.new(0, 28, 0)
             return true, cachedDodgeShift
         elseif (tick() - lastDangerTime) < 0.4 then
-            -- ค้างสถานะหลบต่อช่วงสั้นๆ เพื่อกันอาการกระตุกรัวๆ
             return true, cachedDodgeShift
         end
 
@@ -415,7 +404,6 @@ function startFarm()
                 end
 
                 local targetCFrame = CFrame.lookAt(desiredPos, targetPos)
-                -- ใช้ Lerp ความเร็วสูงแต่นุ่มนวล (ลบอาการยึกยักออกทั้งหมด)
                 hrp.CFrame = hrp.CFrame:Lerp(targetCFrame, 0.35)
                 executeSkillsAndAttacks(bossConfig)
 
