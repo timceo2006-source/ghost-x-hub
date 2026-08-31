@@ -195,7 +195,7 @@ function startFarm()
                 local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     lastFoundMonsterTime = tick()
-                    return hrp, hum
+                    return hrp, hum, currentTargetModel
                 end
             end
         end
@@ -223,12 +223,12 @@ function startFarm()
                         hrp.Transparency = 0.8
                         hrp.CanCollide = false
                         lastFoundMonsterTime = tick()
-                        return hrp, hum
+                        return hrp, hum, obj
                     end
                 end
             end
         end
-        return nil, nil
+        return nil, nil, nil
     end
 
     local function areSkillsReady()
@@ -277,9 +277,8 @@ function startFarm()
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-            local targetHrp, targetHum = getTarget()
+            local targetHrp, targetHum, targetModel = getTarget()
             if targetHrp and targetHum then
-                -- เช็คว่าเลือดปัจจุบันลดลงจากเลือดตอนแรกที่ล็อคไหม ถ้าลดลงแล้วแปลว่าโดนดาเมจ
                 if initialTargetHealth and targetHum.Health < initialTargetHealth then
                     hasDealtDamage = true
                 end
@@ -287,16 +286,21 @@ function startFarm()
                 local skillsReady, items = areSkillsReady()
                 
                 local safeHeight = 50 
-                local diveHeight = 20 
-                local currentHeight = safeHeight
+                local diveHeight = 15 -- ลดความสูงตอนลงมาอีกนิดเผื่อบอสนอนติดพื้น
                 
-                -- เงื่อนไขลงไปปล่อยสกิล: สกิลพร้อม หรือบอสยิง และ "ยังทำดาเมจไม่สำเร็จ"
-                if (skillsReady or workspace:FindFirstChild("bossShot")) and not hasDealtDamage then
+                -- เช็คว่าบอสตายหรือล้มหน้าคว่ำอยู่ไหม (เช็คจากความเอียงหรือตำแหน่งแกน Y ของหัวกับลำตัว)
+                local isBossDown = false
+                local head = targetModel:FindFirstChild("Head")
+                if head and head.Position.Y < targetHrp.Position.Y - 2 then
+                    isBossDown = true
+                end
+
+                local currentHeight = safeHeight
+                if (skillsReady or workspace:FindFirstChild("bossShot") or isBossDown) and not hasDealtDamage then
                     currentHeight = diveHeight
                 else
-                    -- ถ้าทำดาเมจแล้ว (เลือดลด) หรือสกิลยังไม่พร้อม ให้ดีดตัวกลับขึ้นที่สูง
                     if hasDealtDamage and skillsReady == false then
-                        hasDealtDamage = false -- รีเซ็ตสถานะรอรอบถัดไป
+                        hasDealtDamage = false
                     end
                 end
 
@@ -313,7 +317,6 @@ function startFarm()
                 
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
-                -- ถ้าอยู่ความสูงต่ำและสกิลพร้อม ให้กดปล่อยสกิล
                 if currentHeight == diveHeight and skillsReady then
                     for _, item in ipairs(items) do
                         if item:IsA("Tool") then
@@ -396,6 +399,7 @@ task.spawn(function()
     end
 end)
 
+-- โค้ดนี้ถูกอัปเดตเพื่อแก้ปัญหาบอสนอนล้มแล้วตีไม่โดน
 if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
     task.defer(startFarm)
 end
