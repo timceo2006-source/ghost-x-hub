@@ -333,25 +333,21 @@ function startFarm()
                     task.spawn(function()
                         -- STEP 1: ดิ่งลงมาที่ความสูง 20
                         currentDynamicHeight = 20
-                        task.wait(0.15) -- รอให้ลงมาถึงระยะก่อน
+                        task.wait(0.12)
                         
-                        -- กดใช้งานสกิล
+                        -- วนลูปปล่อยทีละสกิล โดยกดย้ำซ้ำๆ จนกว่าสกิลนั้นจะเริ่มนับคูลดาวน์จริง (> 0)
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
 
                             if slot and slot:IsA("ValueBase") then
-                                pressKey(tostring(slot.Value))
-                                
-                                -- เช็คจนกว่าค่าคูลดาวน์จะเริ่มนับ (> 0) เพื่อยืนยันว่าสกิลยิงออกไปแล้วจริงๆ
-                                if cd and cd:IsA("ValueBase") then
-                                    local startWait = tick()
-                                    repeat
-                                        task.wait(0.02)
-                                    until cd.Value > 0 or (tick() - startWait) > 0.45
-                                else
-                                    task.wait(0.1)
-                                end
+                                local keyName = tostring(slot.Value)
+                                local startWait = tick()
+
+                                repeat
+                                    pressKey(keyName)
+                                    task.wait(0.08)
+                                until (cd and cd:IsA("ValueBase") and cd.Value > 0) or (tick() - startWait) > 1.2
                             end
                         end
                         
@@ -363,14 +359,14 @@ function startFarm()
                             end
                         end
 
-                        -- ค้างอยู่ที่ความสูง 20 ต่ออีกเล็กน้อย เพื่อให้แอนิเมชัน/ลูกพลังพุ่งออกไปเต็มที่
-                        task.wait(0.35)
+                        -- ค้างต่ออีกเล็กน้อยให้กระสุน/เอฟเฟกต์พุ่งออกจากตัวจนสุด
+                        task.wait(0.2)
 
                         -- STEP 2: ค่อยๆ ถอยขึ้นไปความสูง 30
                         currentDynamicHeight = 30
                         task.wait(0.2)
 
-                        -- STEP 3: กลับขึ้นไปลอยนิ่งรอคูลดาวน์รอบถัดไป
+                        -- STEP 3: จบการดิ่ง กลับขึ้นไปลอยนิ่งรอคูลดาวน์รอบถัดไป
                         isDiving = false
                     end)
                 end
