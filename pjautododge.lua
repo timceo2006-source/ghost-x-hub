@@ -3,18 +3,9 @@ local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "The Underworld"
 local selectedDifficulty = "Insane"
 
--- ตั้งค่าเพิ่มเติม
-local USE_NORMAL_ATTACK = true -- true = ใช้ตีธรรมดาด้วย, false = ใช้เฉพาะสกิล
-local AUTO_DODGE_ENABLED = true -- เปิด/ปิด ระบบออโต้หลบอัจฉริยะ (หลบเฉพาะตอนมีอันตรายเข้าใกล้)
-
--- ตั้งค่าความสูงในการลอยนิ่งๆ เหนือหัวบอส
+local USE_NORMAL_ATTACK = true 
 local HOVER_HEIGHT = 25
 
--- ตั้งค่าฮิตบ็อกซ์
-local HITBOX_RADIUS = 150
-local HITBOX_SIZE = Vector3.new(20, 20, 20)
-
--- ตั้งค่าเปิดใช้งานระบบ
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
@@ -55,7 +46,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm & Hover"
+titleLabel.Text = "Dungeon Dynamic Rooms"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -85,34 +76,6 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleButton
 
--- ระบบลาก GUI
-local dragging, dragInput, dragStart, startPos
-mainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-mainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
 local startFarm, stopFarm
 
 toggleButton.MouseButton1Click:Connect(function()
@@ -131,31 +94,6 @@ toggleButton.MouseButton1Click:Connect(function()
         toggleButton.BackgroundColor3 = Color3.fromRGB(205, 50, 50)
         timerLabel.Text = "Paused"
         stopFarm()
-    end
-end)
-
--- ==================== ระบบหลักของสคริปต์ ====================
-
-task.spawn(function()
-    pcall(function()
-        local errorPrompt = CoreGui:FindFirstChild("RobloxPromptGui", true)
-        if errorPrompt then
-            errorPrompt.DescendantAdded:Connect(function(subChild)
-                if subChild.Name == "ErrorTitle" then
-                    task.wait(2)
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-                end
-            end)
-        end
-    end)
-    
-    while true do
-        task.wait(5)
-        pcall(function()
-            if not LocalPlayer or not LocalPlayer.Parent then
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-            end
-        end)
     end
 end)
 
@@ -191,218 +129,122 @@ end
 
 function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then return end
-
     stopFarm()
 
-    local currentTargetModel = nil
+    local currentTarget = nil
+    local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
-    local lastDangerTime = 0
-    local cachedDodgeShift = Vector3.new(0, 0, 0)
 
-    -- ฟังก์ชันดึงพาร์ทหลักของมอนสเตอร์
-    local function getMonsterRootPart(obj)
-        local hrp = obj:FindFirstChild("HumanoidRootPart") 
-            or obj:FindFirstChild("Torso") 
-            or obj:FindFirstChild("UpperTorso") 
-            or obj.PrimaryPart
-            
-        if not hrp then
-            for _, child in ipairs(obj:GetChildren()) do
-                if child:IsA("BasePart") then
-                    hrp = child
-                    break
-                end
-            end
-        end
-        return hrp
-    end
-
-    local function expandNearbyHitboxes(playerHrp)
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                local modelName = obj.Name
-                if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
-                    local hum = obj:FindFirstChild("Humanoid")
-                    local hrp = getMonsterRootPart(obj)
-
-                    if hum and hrp and hum.Health > 0 then
-                        local distance = (hrp.Position - playerHrp.Position).Magnitude
-                        if distance <= HITBOX_RADIUS then
-                            hrp.Size = HITBOX_SIZE
-                            hrp.Transparency = 0.8
-                            hrp.CanCollide = false
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    -- ระบบเลือกเป้าหมาย: เน้น "Heart" และ "Minion" ก่อนเสมอ
+    -- ฟังก์ชันหามอนสเตอร์แบบไดนามิก: วนลูปทุกห้องใน workspace.dungeon โดยอัตโนมัติ
     local function getTarget()
-        local heartTarget, heartHrp, heartHum = nil, nil, nil
-        local minionTarget, minionHrp, minionHum = nil, nil, nil
-        local generalTarget, generalHrp, generalHum = nil, nil, nil
-
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                local modelName = obj.Name
-                if modelName:find("_reyillsPreview") or modelName:find("Preview") then
-                    continue
-                end
-
-                local hum = obj:FindFirstChild("Humanoid")
-                local hrp = getMonsterRootPart(obj)
-
-                if hum and hrp and hum.Health > 0 then
-                    local lowerName = modelName:lower()
-                    if lowerName:find("heart") then
-                        heartTarget, heartHrp, heartHum = obj, hrp, hum
-                    elseif lowerName:find("minion") then
-                        minionTarget, minionHrp, minionHum = obj, hrp, hum
-                    else
-                        if not generalTarget then
-                            generalTarget, generalHrp, generalHum = obj, hrp, hum
+        -- ถ้าเป้าหมายเดิมยังอยู่และยังมีชีวิตอยู่ ให้ล็อกเป้าเดิมไว้ก่อน
+        if currentTarget and currentTarget.Parent then
+            local hum = currentTarget:FindFirstChild("Humanoid")
+            local hrp = currentTarget:FindFirstChild("HumanoidRootPart") or currentTarget:FindFirstChild("Torso")
+            if hum and hrp and hum.Health > 0 then
+                return hrp
+            end
+        end
+        
+        currentTarget = nil
+        local dungeon = workspace:FindFirstChild("dungeon")
+        if dungeon then
+            -- วนลูปทุกๆ ลูก (ห้อง) ที่อยู่ในโฟลเดอร์ dungeon (ไม่ว่าจะเป็น room1, room4, bossRoom ฯลฯ)
+            for _, room in ipairs(dungeon:GetChildren()) do
+                if room:IsA("Folder") or room:IsA("Model") then
+                    -- ค้นหาทุกโมเดลหรือศัตรูที่อยู่ภายในห้องนั้นๆ
+                    for _, obj in ipairs(room:GetDescendants()) do
+                        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
+                            local hum = obj:FindFirstChild("Humanoid")
+                            local hrp = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso") or obj.PrimaryPart
+                            if hum and hrp and hum.Health > 0 then
+                                -- กรองไม่ให้จับผู้เล่นด้วยกันเอง
+                                if not Players:GetPlayerFromCharacter(obj) then
+                                    currentTarget = obj
+                                    hrp.Size = Vector3.new(25, 25, 25)
+                                    hrp.Transparency = 0.8 
+                                    hrp.CanCollide = false
+                                    return hrp
+                                end
+                            end
                         end
                     end
                 end
             end
         end
-
-        local chosenTarget, chosenHrp, chosenHum = nil, nil, nil
-
-        if heartTarget and heartHrp and heartHum then
-            chosenTarget, chosenHrp, chosenHum = heartTarget, heartHrp, heartHum
-        elseif minionTarget and minionHrp and minionHum then
-            chosenTarget, chosenHrp, chosenHum = minionTarget, minionHrp, minionHum
-        elseif generalTarget and generalHrp and generalHum then
-            chosenTarget, chosenHrp, chosenHum = generalTarget, generalHrp, generalHum
-        end
-
-        if chosenTarget and chosenHrp and chosenHum then
-            currentTargetModel = chosenTarget
-            lastFoundMonsterTime = tick()
-            return chosenHrp, chosenHum
-        end
-
-        currentTargetModel = nil
-        return nil, nil
+        return nil
     end
 
-    -- ฟังก์ชันตรวจสอบและกดใช้สกิลทั้งหมด
-    local function executeSkillsAndAttacks()
-        local items = {}
-        if LocalPlayer:FindFirstChild("Backpack") then
-            for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
-        end
-        if LocalPlayer.Character then
-            for _, v in ipairs(LocalPlayer.Character:GetChildren()) do table.insert(items, v) end
-        end
-
-        for _, item in ipairs(items) do
-            if item:IsA("Tool") then
-                local slot = item:FindFirstChild("abilitySlot")
-                local cd = item:FindFirstChild("cooldown")
-                if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
-                    if cd.Value <= 0.1 then
-                        pressKey(tostring(slot.Value))
-                        task.wait(0.04)
-                    end
-                end
-            end
-        end
-
-        if USE_NORMAL_ATTACK and LocalPlayer.Character then
-            local equippedTool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
-            if equippedTool then
-                equippedTool:Activate()
-            end
-        end
-    end
-
-    -- ฟังก์ชันหลบอัจฉริยะ (ตรวจจับสัญญาณอันตรายรอบตัว และหลบเฉพาะตอนมีภัยใกล้ตัว)
-    local function getDodgeOffset(playerHrp)
-        if not AUTO_DODGE_ENABLED then return false, Vector3.new(0, 0, 0) end
-
-        local dangerDetected = false
-        local nearestDangerPos = nil
-        local minDst = 25 -- ระยะตรวจจับอันตรายรอบตัว
-
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") then
-                local isRedColor = obj.Color.R > 0.7 and obj.Color.G < 0.3 and obj.Color.B < 0.3
-                local isWarningName = (obj.Name:lower():find("warning") or obj.Name:lower():find("indicator") or obj.Name:lower():find("danger") or obj.Name:lower():find("laser") or obj.Name:lower():find("zone"))
-
-                if isRedColor or isWarningName then
-                    local dist = (obj.Position - playerHrp.Position).Magnitude
-                    if dist <= minDst then
-                        dangerDetected = true
-                        nearestDangerPos = obj.Position
-                        minDst = dist
-                    end
-                end
-            end
-        end
-
-        if dangerDetected and nearestDangerPos then
-            lastDangerTime = tick()
-            -- ดีดตัวหลบออกด้านข้างและลอยสูงขึ้นเพื่อพ้นจากรัศมีสกิล
-            local escapeDir = (playerHrp.Position - nearestDangerPos)
-            escapeDir = Vector3.new(escapeDir.X, 0, escapeDir.Z).Unit
-            if escapeDir.Magnitude == 0 then escapeDir = Vector3.new(1, 0, 0) end
-            cachedDodgeShift = (escapeDir * 18) + Vector3.new(0, 15, 0)
-            return true, cachedDodgeShift
-        elseif (tick() - lastDangerTime) < 0.5 then
-            -- ค้างสถานะหลบชั่วครู่จนกว่าสกิลจะผ่านไป
-            return true, cachedDodgeShift
-        end
-
-        return false, Vector3.new(0, 0, 0)
-    end
-
+    -- ลูปหลัก: ลอยตัวนิ่งๆ บนหัวบอส/มอนสเตอร์แบบเสถียร
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
         pcall(function()
             local char = LocalPlayer.Character
             if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
-
+            
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
-
+            
             for _, part in ipairs(char:GetDescendants()) do
                 if part:IsA("BasePart") then part.CanCollide = false end
             end
-            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-
-            expandNearbyHitboxes(hrp)
-
-            local targetHrp, targetHum = getTarget()
-            if targetHrp and targetHum then
-                local isDanger, dodgeShift = getDodgeOffset(hrp)
-                local targetPos = targetHrp.Position
-                local desiredPos
-
-                if isDanger then
-                    -- ถ้ามีอันตราย พุ่งหลบไปยังตำแหน่งหลบภัย
-                    desiredPos = targetPos + Vector3.new(0, HOVER_HEIGHT, 0) + dodgeShift
-                else
-                    -- ถ้าปกติ ไม่มีอันตราย ลอยนิ่งๆ อยู่เหนือหัวบอสตรงๆ เพื่อปล่อยสกิลลงด้านล่าง
-                    desiredPos = targetPos + Vector3.new(0, HOVER_HEIGHT, 0)
-                end
-
-                -- หันหน้ามองลงมาที่ตัวบอสเพื่อยิงสกิลใส่ด้านล่าง
-                local targetCFrame = CFrame.lookAt(desiredPos, targetPos)
-                hrp.CFrame = hrp.CFrame:Lerp(targetCFrame, 0.35)
-                
-                executeSkillsAndAttacks()
-
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0) 
+            
+            local targetHrp = getTarget()
+            if targetHrp then
+                lastFoundMonsterTime = tick()
+                local safePos = targetHrp.Position + Vector3.new(0, HOVER_HEIGHT, 0)
+                hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
             else
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
             end
         end)
+    end)
+
+    -- ลูปแยกสำหรับกดสกิลและโจมตีปกติ
+    task.spawn(function()
+        while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
+            pcall(function()
+                local char = LocalPlayer.Character
+                if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
+                    local targetHrp = getTarget()
+                    if targetHrp then
+                        if tick() - lastSkillTime > 0.15 then
+                            local items = {}
+                            if LocalPlayer:FindFirstChild("Backpack") then
+                                for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
+                            end
+                            for _, v in ipairs(char:GetChildren()) do table.insert(items, v) end
+                            
+                            for _, item in ipairs(items) do
+                                if item:IsA("Tool") then
+                                    local slot = item:FindFirstChild("abilitySlot")
+                                    local cd = item:FindFirstChild("cooldown")
+                                    if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
+                                        if cd.Value <= 0.1 then
+                                            pressKey(tostring(slot.Value))
+                                            lastSkillTime = tick()
+                                            break
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        
+                        if USE_NORMAL_ATTACK then
+                            local equippedTool = char:FindFirstChildOfClass("Tool")
+                            if equippedTool then
+                                equippedTool:Activate()
+                            end
+                        end
+                    end
+                end
+            end)
+            task.wait(0.1)
+        end
     end)
 end
 
@@ -420,14 +262,7 @@ task.spawn(function()
 
                     if createLobbyRemote then
                         timerLabel.Text = "Creating Lobby..."
-                        local args = {
-                            selectedMap,
-                            selectedDifficulty,
-                            0,
-                            false,
-                            false,
-                            false
-                        }
+                        local args = { selectedMap, selectedDifficulty, 0, false, false, false }
                         createLobbyRemote:InvokeServer(unpack(args))
                         task.wait(1.5)
                     end
