@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "The Underworld"
-local selectedDifficulty = "Insane"
+local selectedMap = "King's Castle"
+local selectedDifficulty = "Nightmare"
 
 -- ตั้งค่าเพิ่มเติม
 local USE_NORMAL_ATTACK = true -- true = ใช้ตีธรรมดาด้วย, false = ใช้เฉพาะสกิล
@@ -202,13 +202,31 @@ function startFarm()
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
 
+    -- ฟังก์ชันดึงพาร์ทหลักของมอนสเตอร์ รองรับทุกชื่อ (HumanoidRootPart, Torso, PrimaryPart ฯลฯ)
+    local function getMonsterRootPart(obj)
+        local hrp = obj:FindFirstChild("HumanoidRootPart") 
+            or obj:FindFirstChild("Torso") 
+            or obj:FindFirstChild("UpperTorso") 
+            or obj.PrimaryPart
+            
+        if not hrp then
+            for _, child in ipairs(obj:GetChildren()) do
+                if child:IsA("BasePart") then
+                    hrp = child
+                    break
+                end
+            end
+        end
+        return hrp
+    end
+
     local function expandNearbyHitboxes(playerHrp)
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local modelName = obj.Name
                 if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
                     local hum = obj:FindFirstChild("Humanoid")
-                    local hrp = obj:FindFirstChild("HumanoidRootPart")
+                    local hrp = getMonsterRootPart(obj)
 
                     if hum and hrp and hum.Health > 0 then
                         local distance = (hrp.Position - playerHrp.Position).Magnitude
@@ -227,7 +245,7 @@ function startFarm()
         if currentTargetModel and currentTargetModel.Parent then
             local hum = currentTargetModel:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
-                local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
+                local hrp = getMonsterRootPart(currentTargetModel)
                 if hrp then
                     lastFoundMonsterTime = tick()
                     return hrp, hum
@@ -249,7 +267,7 @@ function startFarm()
                 end
 
                 local hum = obj:FindFirstChild("Humanoid")
-                local hrp = obj:FindFirstChild("HumanoidRootPart")
+                local hrp = getMonsterRootPart(obj)
 
                 if hum and hrp and hum.Health > 0 then
                     if modelName:find("Heart") then
@@ -257,7 +275,6 @@ function startFarm()
                     elseif modelName:find("Minion") then
                         minionTarget, minionHrp, minionHum = obj, hrp, hum
                     else
-                        -- เก็บมอนสเตอร์ทั่วไปหรือบอสตัวอื่นๆ สำรองไว้
                         if not generalTarget then
                             generalTarget, generalHrp, generalHum = obj, hrp, hum
                         end
@@ -266,7 +283,6 @@ function startFarm()
             end
         end
 
-        -- จัดลำดับความสำคัญ: หัวใจ (Heart) -> ลูกน้อง (Minion) -> มอนสเตอร์/บอสทั่วไป
         local chosenTarget, chosenHrp, chosenHum = nil, nil, nil
 
         if heartTarget and heartHrp and heartHum then
@@ -333,21 +349,17 @@ function startFarm()
 
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("BasePart") then
-                -- เช็คเงื่อนไขวัตถุอันตราย (พาร์ทเตือนภัยสีแดง, เลเซอร์, หรือชื่อที่เกี่ยวข้องกับสกิล)
                 local isRedColor = obj.Color.R > 0.7 and obj.Color.G < 0.3 and obj.Color.B < 0.3
                 local isWarningName = (obj.Name:lower():find("warning") or obj.Name:lower():find("indicator") or obj.Name:lower():find("danger") or obj.Name:lower():find("laser") or obj.Name:lower():find("zone"))
 
                 if isRedColor or isWarningName then
                     local dist = (obj.Position - playerHrp.Position).Magnitude
-                    -- ถ้ารัศมีสกิล/พาร์ทอันตรายเข้ามาใกล้ตัวในระยะ 30 หน่วย
                     if dist <= 30 then
                         dangerDetected = true
-                        -- คำนวณทิศทางพุ่งหลบออกด้านข้าง + ลอยขึ้นฟ้าเพื่อความปลอดภัยสูงสุด
                         local escapeDir = (playerHrp.Position - obj.Position)
                         escapeDir = Vector3.new(escapeDir.X, 0, escapeDir.Z).Unit
                         if escapeDir.Magnitude == 0 then escapeDir = Vector3.new(1, 0, 0) end
                         
-                        -- วาปหลบออกด้านข้าง 12 หน่วย และลอยสูงขึ้น 35 หน่วยทันที
                         dodgeShift = (escapeDir * 12) + Vector3.new(0, 35, 0)
                         break
                     end
@@ -382,24 +394,18 @@ function startFarm()
                     bossConfig = BOSS_CONFIGURATIONS[currentTargetModel.Name]
                 end
 
-                -- ตรวจสอบว่ามีสกิลพุ่งมาต้องหลบไหม
                 local isDanger, dodgeShift = getDodgeOffset(hrp)
                 local targetPos = targetHrp.Position
                 local safePos
 
                 if isDanger then
-                    -- โหมดหลบภัยเร่งด่วน (วาปหลบออกด้านข้าง/ขึ้นฟ้าทันทีแต่ยังหันหน้ามองบอส)
                     safePos = targetPos + dodgeShift
                 else
-                    -- โหมดปกติ: ลอยนิ่งๆ อยู่เหนือหัวบอสอย่างมั่นคง ไม่ต้องหมุนให้เวียนหัว
                     local hoverHeight = bossConfig and bossConfig.customHoverHeight or 90
                     safePos = targetPos + Vector3.new(0, hoverHeight, 0)
                 end
 
-                -- ล็อคตำแหน่งและหันหน้าจ้องมองมอนสเตอร์ตลอดเวลา พร้อมโจมตีอัตโนมัติ
                 hrp.CFrame = CFrame.lookAt(safePos, targetPos)
-
-                -- สั่งโจมตีและใช้สกิลต่อเนื่อง
                 executeSkillsAndAttacks(bossConfig)
 
             else
