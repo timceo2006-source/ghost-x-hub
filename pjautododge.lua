@@ -239,7 +239,7 @@ function startFarm()
         
         local heartTarget, heartHrp, heartHum = nil, nil, nil
         local minionTarget, minionHrp, minionHum = nil, nil, nil
-        local bossTarget, bossHrp, bossHum = nil, nil, nil
+        local generalTarget, generalHrp, generalHum = nil, nil, nil
 
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
@@ -256,26 +256,31 @@ function startFarm()
                         heartTarget, heartHrp, heartHum = obj, hrp, hum
                     elseif modelName:find("Minion") then
                         minionTarget, minionHrp, minionHum = obj, hrp, hum
-                    elseif modelName:find("Azrallik") then
-                        bossTarget, bossHrp, bossHum = obj, hrp, hum
+                    else
+                        -- เก็บมอนสเตอร์ทั่วไปหรือบอสตัวอื่นๆ สำรองไว้
+                        if not generalTarget then
+                            generalTarget, generalHrp, generalHum = obj, hrp, hum
+                        end
                     end
                 end
             end
         end
 
-        -- จัดลำดับความสำคัญ: ตีหัวใจ (Heart) ก่อน -> ลูกน้อง (Minion) -> บอสหลัก (Azrallik)
+        -- จัดลำดับความสำคัญ: หัวใจ (Heart) -> ลูกน้อง (Minion) -> มอนสเตอร์/บอสทั่วไป
+        local chosenTarget, chosenHrp, chosenHum = nil, nil, nil
+
         if heartTarget and heartHrp and heartHum then
-            currentTargetModel = heartTarget
-            lastFoundMonsterTime = tick()
-            return heartHrp, heartHum
+            chosenTarget, chosenHrp, chosenHum = heartTarget, heartHrp, heartHum
         elseif minionTarget and minionHrp and minionHum then
-            currentTargetModel = minionTarget
+            chosenTarget, chosenHrp, chosenHum = minionTarget, minionHrp, minionHum
+        elseif generalTarget and generalHrp and generalHum then
+            chosenTarget, chosenHrp, chosenHum = generalTarget, generalHrp, generalHum
+        end
+
+        if chosenTarget and chosenHrp and chosenHum then
+            currentTargetModel = chosenTarget
             lastFoundMonsterTime = tick()
-            return minionHrp, minionHum
-        elseif bossTarget and bossHrp and bossHum then
-            currentTargetModel = bossTarget
-            lastFoundMonsterTime = tick()
-            return bossHrp, bossHum
+            return chosenHrp, chosenHum
         end
 
         return nil, nil
