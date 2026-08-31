@@ -185,7 +185,8 @@ function startFarm()
 
     local currentTarget = nil
     local lastFoundMonsterTime = tick()
-    local isDivingToAttack = false
+    local lastDiveTime = 0
+    local stayDuration = 0.2 -- ปรับเวลาค้างอยู่ข้างล่างให้เหลือ 0.2 วินาทีตามที่ต้องการ
 
     local function getTarget()
         if currentTarget and currentTarget.Parent then
@@ -214,7 +215,6 @@ function startFarm()
                 if hum and hrp and hum.Health > 0 then
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
                         currentTarget = obj
-                        -- ขยาย Hitbox ให้ใหญ่ขึ้นครอบคลุมพื้นที่กว้างขึ้น (65x65x65)
                         hrp.Size = Vector3.new(65, 65, 65)
                         hrp.Transparency = 0.8
                         hrp.CanCollide = false
@@ -277,19 +277,19 @@ function startFarm()
             if targetHrp then
                 local skillsReady, items = areSkillsReady()
                 
-                local safeHeight = 50 -- ความสูงตอนบินวนรอคูลดาวน์
-                local diveHeight = 20 -- ปรับความสูงตอนปล่อยสกิลให้ไม่ต่ำเกินไป (ป้องกันโดนดาเมจ)
-                
+                local safeHeight = 50 
+                local diveHeight = 20 
                 local currentHeight = safeHeight
-                if skillsReady or workspace:FindFirstChild("bossShot") then
+                
+                if skillsReady or workspace:FindFirstChild("bossShot") or (tick() - lastDiveTime < stayDuration) then
                     currentHeight = diveHeight
-                    isDivingToAttack = true
-                else
-                    isDivingToAttack = false
+                    if skillsReady and (tick() - lastDiveTime > stayDuration + 1.5) then
+                        lastDiveTime = tick() 
+                    end
                 end
 
                 local timeNow = tick()
-                local radius = 15 -- ขยายรัศมีการวนรอบให้กว้างขึ้นเล็กน้อยเพื่อความปลอดภัย
+                local radius = 16 
                 local speed = 3   
                 local angle = timeNow * speed
                 
@@ -301,7 +301,7 @@ function startFarm()
                 
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
-                if isDivingToAttack and skillsReady then
+                if currentHeight == diveHeight and skillsReady then
                     for _, item in ipairs(items) do
                         if item:IsA("Tool") then
                             local slot = item:FindFirstChild("abilitySlot")
@@ -309,7 +309,7 @@ function startFarm()
                             if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                                 if cd.Value <= 0.1 then
                                     pressKey(tostring(slot.Value))
-                                    task.wait(0.05)
+                                    task.wait(0.02)
                                 end
                             end
                         end
@@ -320,7 +320,6 @@ function startFarm()
                     end
                 end
             else
-                isDivingToAttack = false
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
