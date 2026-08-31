@@ -186,16 +186,16 @@ function startFarm()
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
     local initialTargetHealth = nil
-    local hasDealtDamage = false
     local attackAttemptTime = nil
-    local ignoredMonsters = {} -- รายชื่อมอนสเตอร์ที่ข้ามชั่วคราว {[model] = tick() + duration}
+    local isDiving = false -- สถานะล็อกการลงไปปล่อยชุดสกิล
+    local ignoredMonsters = {}
 
     local function isIgnored(model)
         if ignoredMonsters[model] then
             if tick() < ignoredMonsters[model] then
                 return true
             else
-                ignoredMonsters[model] = nil -- หมดเวลาข้าม ปลดล็อกให้โจมตีได้ใหม่
+                ignoredMonsters[model] = nil
             end
         end
         return false
@@ -215,7 +215,6 @@ function startFarm()
 
         currentTargetModel = nil
         initialTargetHealth = nil
-        hasDealtDamage = false
         attackAttemptTime = nil
         
         for _, obj in ipairs(workspace:GetDescendants()) do
@@ -232,7 +231,6 @@ function startFarm()
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
                         currentTargetModel = obj
                         initialTargetHealth = hum.Health
-                        hasDealtDamage = false
                         attackAttemptTime = nil
                         hrp.Size = Vector3.new(65, 65, 65)
                         hrp.Transparency = 0.8
@@ -246,8 +244,9 @@ function startFarm()
         return nil, nil
     end
 
-    local function areSkillsReady()
-        local readyCount = 0
+    -- ตรวจสอบว่าสกิลพร้อมใช้ครบตามเงื่อนไขหรือไม่ (อย่างน้อย 2 สกิล หรือทุกสกิลที่มี)
+    local function checkSkillsReady()
+        local readyTools = {}
         local totalSkills = 0
         
         local items = {}
@@ -265,16 +264,17 @@ function startFarm()
                 if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                     totalSkills = totalSkills + 1
                     if cd.Value <= 0.1 then
-                        readyCount = readyCount + 1
+                        table.insert(readyTools, item)
                     end
                 end
             end
         end
 
-        if totalSkills > 0 and readyCount >= math.min(2, totalSkills) then
-            return true, items
+        local requiredCount = math.min(2, totalSkills)
+        if totalSkills > 0 and #readyTools >= requiredCount then
+            return true, readyTools
         end
-        return false, items
+        return false, {}
     end
 
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
@@ -294,23 +294,44 @@ function startFarm()
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                if initialTargetHealth and targetHum.Health < initialTargetHealth then
-                    hasDealtDamage = true
-                end
-
-                local skillsReady, items = areSkillsReady()
-                
                 local safeHeight = 60 
                 local diveHeight = 25 
-                local currentHeight = safeHeight
                 
-                if (skillsReady or workspace:FindFirstChild("bossShot")) and not hasDealtDamage then
-                    currentHeight = diveHeight
-                else
-                    if hasDealtDamage and skillsReady == false then
-                        hasDealtDamage = false
-                    end
+                local isReady, readyTools = checkSkillsReady()
+
+                -- หากสกิลพร้อมครบ 2 อัน และยังไม่ได้อยู่ในสถานะดำน้ำโจมตี ให้เริ่มลงไปปล่อยสกิล
+                if isReady and not isDiving then
+                    isDiving = true
+                    attackAttemptTime = tick()
+                    initialTargetHealth = targetHum.Health
+
+                    task.spawn(function()
+                        -- รอนำตัวละครลงระยะปล่อยสกิล
+                        task.wait(0.12)
+                        
+                        -- กดปล่อยสกิลทั้งหมดที่มีในชุดเดียว
+                        for _, item in ipairs(readyTools) do
+                            local slot = item:FindFirstChild("abilitySlot")
+                            if slot and slot:IsA("ValueBase") then
+                                pressKey(tostring(slot.Value))
+                                task.wait(0.08) -- หน่วงเวลาเล็กน้อยเพื่อให้เกมรับคำสั่งสกิลได้ครบถ้วน
+                            end
+                        end
+                        
+                        local currentChar = LocalPlayer.Character
+                        if currentChar then
+                            local equippedTool = currentChar:FindFirstChildOfClass("Tool")
+                            if equippedTool then
+                                equippedTool:Activate()
+                            end
+                        end
+
+                        task.wait(0.35) -- รอให้แอนิเมชันปล่อยสกิลเสร็จสิ้น
+                        isDiving = false -- ถอยกลับขึ้นไปกบดานที่ safeHeight
+                    end)
                 end
+
+                local currentHeight = isDiving and diveHeight or safeHeight
 
                 local timeNow = tick()
                 local radius = 20 
@@ -325,48 +346,20 @@ function startFarm()
                 
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
-                -- เมื่อลงไปโจมตี
-                if currentHeight == diveHeight and skillsReady then
-                    if not attackAttemptTime then
-                        attackAttemptTime = tick()
-                        initialTargetHealth = targetHum.Health
-                    end
-
-                    for _, item in ipairs(items) do
-                        if item:IsA("Tool") then
-                            local slot = item:FindFirstChild("abilitySlot")
-                            local cd = item:FindFirstChild("cooldown")
-                            if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
-                                if cd.Value <= 0.1 then
-                                    pressKey(tostring(slot.Value))
-                                    task.wait(0.02)
-                                end
-                            end
-                        end
-                    end
-                    local equippedTool = char:FindFirstChildOfClass("Tool")
-                    if equippedTool then
-                        equippedTool:Activate()
-                    end
-                end
-
-                -- ตรวจสอบว่าพยายามโจมตีเกิน 2.5 วินาทีแล้วเลือดไม่ลดหรือไม่
-                if attackAttemptTime and (tick() - attackAttemptTime > 10) then
+                -- ตรวจสอบว่าหลังจากเริ่มโจมตีผ่านไป 2.5 วินาที เลือดเป้าหมายลดลงบ้างหรือไม่
+                if attackAttemptTime and (tick() - attackAttemptTime > 2.5) then
                     if initialTargetHealth and targetHum.Health >= initialTargetHealth then
-                        -- เพิ่มเข้า Blacklist เป็นเวลา 15 วินาที เพื่อให้ระบบย้ายไปตีตัวอื่นก่อน
                         ignoredMonsters[currentTargetModel] = tick() + 15
                         currentTargetModel = nil
                         attackAttemptTime = nil
-                        hasDealtDamage = false
+                        isDiving = false
                     else
-                        -- ถ้าเลือดลดปกติ ให้รีเซ็ตเวลาสำหรับเช็ครอบถัดไป
-                        attackAttemptTime = tick()
-                        initialTargetHealth = targetHum.Health
+                        attackAttemptTime = nil
                     end
                 end
 
             else
-                hasDealtDamage = false
+                isDiving = false
                 initialTargetHealth = nil
                 attackAttemptTime = nil
                 if tick() - lastFoundMonsterTime > 1.5 then
