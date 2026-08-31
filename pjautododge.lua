@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "King's Castle"
-local selectedDifficulty = "Nightmare"
+local selectedMap = "The Underworld"
+local selectedDifficulty = "Insane"
 
 -- ตั้งค่าเพิ่มเติม
 local USE_NORMAL_ATTACK = true -- true = ใช้ตีธรรมดาด้วย, false = ใช้เฉพาะสกิล
