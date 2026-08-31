@@ -194,7 +194,7 @@ function startFarm()
     local farmState = "HOVER"
 
     -- ตั้งค่าระดับความสูงช่วงรอคูลดาวน์ (80, 50, 70)
-    local hoverHeights = {80, 50, 70}
+    local hoverHeights = {120, 40, 70}
     local heightIndex = 1
     local lastHeightChange = tick()
     local currentHoverHeight = hoverHeights[1]
