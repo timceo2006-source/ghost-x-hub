@@ -183,24 +183,26 @@ function startFarm()
 
     stopFarm()
 
-    local currentTarget = nil
+    local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
-    local lastDiveTime = 0
-    local stayDuration = 0.5 -- ปรับเวลาค้างอยู่ข้างล่างให้เหลือ 0.2 วินาทีตามที่ต้องการ
+    local initialTargetHealth = nil
+    local hasDealtDamage = false
 
     local function getTarget()
-        if currentTarget and currentTarget.Parent then
-            local hum = currentTarget:FindFirstChild("Humanoid")
+        if currentTargetModel and currentTargetModel.Parent then
+            local hum = currentTargetModel:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
-                local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
+                local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     lastFoundMonsterTime = tick()
-                    return hrp
+                    return hrp, hum
                 end
             end
         end
 
-        currentTarget = nil
+        currentTargetModel = nil
+        initialTargetHealth = nil
+        hasDealtDamage = false
         
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
@@ -214,17 +216,19 @@ function startFarm()
 
                 if hum and hrp and hum.Health > 0 then
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
-                        currentTarget = obj
+                        currentTargetModel = obj
+                        initialTargetHealth = hum.Health
+                        hasDealtDamage = false
                         hrp.Size = Vector3.new(65, 65, 65)
                         hrp.Transparency = 0.8
                         hrp.CanCollide = false
                         lastFoundMonsterTime = tick()
-                        return hrp
+                        return hrp, hum
                     end
                 end
             end
         end
-        return nil
+        return nil, nil
     end
 
     local function areSkillsReady()
@@ -273,24 +277,32 @@ function startFarm()
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-            local targetHrp = getTarget()
-            if targetHrp then
+            local targetHrp, targetHum = getTarget()
+            if targetHrp and targetHum then
+                -- เช็คว่าเลือดปัจจุบันลดลงจากเลือดตอนแรกที่ล็อคไหม ถ้าลดลงแล้วแปลว่าโดนดาเมจ
+                if initialTargetHealth and targetHum.Health < initialTargetHealth then
+                    hasDealtDamage = true
+                end
+
                 local skillsReady, items = areSkillsReady()
                 
                 local safeHeight = 50 
-                local diveHeight = 23 
+                local diveHeight = 20 
                 local currentHeight = safeHeight
                 
-                if skillsReady or workspace:FindFirstChild("bossShot") or (tick() - lastDiveTime < stayDuration) then
+                -- เงื่อนไขลงไปปล่อยสกิล: สกิลพร้อม หรือบอสยิง และ "ยังทำดาเมจไม่สำเร็จ"
+                if (skillsReady or workspace:FindFirstChild("bossShot")) and not hasDealtDamage then
                     currentHeight = diveHeight
-                    if skillsReady and (tick() - lastDiveTime > stayDuration + 1.5) then
-                        lastDiveTime = tick() 
+                else
+                    -- ถ้าทำดาเมจแล้ว (เลือดลด) หรือสกิลยังไม่พร้อม ให้ดีดตัวกลับขึ้นที่สูง
+                    if hasDealtDamage and skillsReady == false then
+                        hasDealtDamage = false -- รีเซ็ตสถานะรอรอบถัดไป
                     end
                 end
 
                 local timeNow = tick()
-                local radius = 18 
-                local speed = 4   
+                local radius = 16 
+                local speed = 3   
                 local angle = timeNow * speed
                 
                 local offsetX = math.cos(angle) * radius
@@ -301,6 +313,7 @@ function startFarm()
                 
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
+                -- ถ้าอยู่ความสูงต่ำและสกิลพร้อม ให้กดปล่อยสกิล
                 if currentHeight == diveHeight and skillsReady then
                     for _, item in ipairs(items) do
                         if item:IsA("Tool") then
@@ -320,6 +333,8 @@ function startFarm()
                     end
                 end
             else
+                hasDealtDamage = false
+                initialTargetHealth = nil
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
