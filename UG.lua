@@ -269,7 +269,6 @@ function startFarm()
         return false
     end
 
-    -- ฟังก์ชันย้ายตำแหน่งแบบสมูท ป้องกัน Anti-Cheat เช็กเจอวาปทันที
     local function smoothMoveTo(hrp, targetCFrame)
         local tweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Linear)
         local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
