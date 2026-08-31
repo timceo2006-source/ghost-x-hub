@@ -1,4 +1,4 @@
-Local TARGET_PLACE_ID = 77649408247578
+local TARGET_PLACE_ID = 77649408247578
 
 local selectedMap = "The Underworld"
 local selectedDifficulty = "Insane"
@@ -44,7 +44,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm (Orbit)"
+titleLabel.Text = "Dungeon Auto Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -187,7 +187,7 @@ function startFarm()
     local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
     local isDodgingBoss = false
-    local orbitAngle = 0 -- ตัวแปรเก็บองศาสำหรับการหมุนวน
+    local orbitAngle = 0
 
     local function getTarget()
         if currentTarget and currentTarget.Parent then
@@ -228,7 +228,8 @@ function startFarm()
         return nil
     end
 
-    getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function(dt)
+    -- ใช้ลูปแบบเสถียรสำหรับการหมุนวนรอบมอนสเตอร์
+    getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
         pcall(function()
@@ -253,17 +254,14 @@ function startFarm()
                     isDodgingBoss = false
                 end
 
-                -- คำนวณการหมุนวนรอบเป้าหมาย (Orbiting)
-                orbitAngle = orbitAngle + (dt * 3) -- ความเร็วในการหมุน (ปรับเลข 3 มาก/น้อยได้ตามต้องการ)
-                local orbitRadius = 15 -- ระยะห่างจากมอนสเตอร์เวลารัศมีวน
+                -- คำนวณการหมุนวงกลมรอบมอนสเตอร์ด้านบน
+                orbitAngle = (orbitAngle + 0.05) % (math.pi * 2)
+                local orbitRadius = 16
                 local offsetX = math.cos(orbitAngle) * orbitRadius
                 local offsetZ = math.sin(orbitAngle) * orbitRadius
 
-                -- ตำแหน่งใหม่ที่จะให้ตัวละครบินไป (วนรอบตัวมอนสเตอร์ และอยู่สูงขึ้นไป)
-                local targetPos = targetHrp.Position + Vector3.new(offsetX, safeHeight, offsetZ)
-                
-                -- ทำให้ตัวละครบินไปตำแหน่งวงโคจร พร้อมกับ "ก้มหน้ามองลงมาที่มอนสเตอร์" เพื่อปล่อยสกิลใส่
-                hrp.CFrame = CFrame.lookAt(targetPos, targetHrp.Position)
+                local orbitPos = targetHrp.Position + Vector3.new(offsetX, safeHeight, offsetZ)
+                hrp.CFrame = CFrame.lookAt(orbitPos, targetHrp.Position)
             else
                 isDodgingBoss = false
                 if tick() - lastFoundMonsterTime > 1.5 then
