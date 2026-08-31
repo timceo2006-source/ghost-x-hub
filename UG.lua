@@ -4,10 +4,10 @@ local selectedMap = "King's Castle"
 local selectedDifficulty = "Nightmare"
 
 -- ตั้งค่าฮิตบ็อกซ์
-local HITBOX_RADIUS = 150 -- ระยะขยายฮิตบ็อกซ์รอบตัวผู้เล่น (Studs)
-local HITBOX_SIZE = Vector3.new(20, 20, 20) -- ขนาดฮิตบ็อกซ์ที่เหมาะสม
+local HITBOX_RADIUS = 150
+local HITBOX_SIZE = Vector3.new(20, 20, 20)
 
--- ตั้งค่าให้เปิดทั้งฟาร์มและออโต้สร้างห้องตั้งแต่เริ่มรันสคริปต์
+-- ตั้งค่าเปิดใช้งานระบบ
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
@@ -21,7 +21,7 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== สร้าง GUI (มุมขวาบน) ====================
+-- ==================== GUI (มุมขวาบน) ====================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "DungeonFarmGui"
 screenGui.ResetOnSpawn = false
@@ -189,31 +189,17 @@ function startFarm()
 
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
-    local initialTargetHealth = nil
-    local attackAttemptTime = nil
-    local isDiving = false
-    local ignoredMonsters = {}
+    local isExecutingCombo = false
 
-    -- ระดับความสูงช่วงรอคูลดาวน์
+    -- ความสูงสำหรับลอยนิ่งช่วงรอคูลดาวน์
     local hoverHeights = {50, 60, 70}
     local heightIndex = 1
     local lastHeightChange = tick()
     local currentDynamicHeight = hoverHeights[1]
 
-    local function isIgnored(model)
-        if ignoredMonsters[model] then
-            if tick() < ignoredMonsters[model] then
-                return true
-            else
-                ignoredMonsters[model] = nil
-            end
-        end
-        return false
-    end
-
     local function expandNearbyHitboxes(playerHrp)
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) and not isIgnored(obj) then
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local modelName = obj.Name
                 if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
                     local hum = obj:FindFirstChild("Humanoid")
@@ -233,7 +219,7 @@ function startFarm()
     end
 
     local function getTarget()
-        if currentTargetModel and currentTargetModel.Parent and not isIgnored(currentTargetModel) then
+        if currentTargetModel and currentTargetModel.Parent then
             local hum = currentTargetModel:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
                 local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
@@ -245,11 +231,9 @@ function startFarm()
         end
 
         currentTargetModel = nil
-        initialTargetHealth = nil
-        attackAttemptTime = nil
         
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) and not isIgnored(obj) then
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local modelName = obj.Name
                 if modelName:find("_reyillsPreview") or modelName:find("Preview") then
                     continue
@@ -261,8 +245,6 @@ function startFarm()
                 if hum and hrp and hum.Health > 0 then
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
                         currentTargetModel = obj
-                        initialTargetHealth = hum.Health
-                        attackAttemptTime = nil
                         lastFoundMonsterTime = tick()
                         return hrp, hum
                     end
@@ -290,13 +272,14 @@ function startFarm()
                 local cd = item:FindFirstChild("cooldown")
                 if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                     totalSkills = totalSkills + 1
-                    if cd.Value <= 0 then
+                    if cd.Value <= 0.1 then
                         table.insert(readyTools, item)
                     end
                 end
             end
         end
 
+        -- ต้องพร้อมใช้งานครบทั้ง 2 สกิล (หรือเท่าที่มี)
         local requiredCount = math.min(2, totalSkills)
         if totalSkills > 0 and #readyTools >= requiredCount then
             return true, readyTools
@@ -325,17 +308,16 @@ function startFarm()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                if isReady and not isDiving then
-                    isDiving = true
-                    attackAttemptTime = tick()
-                    initialTargetHealth = targetHum.Health
+                -- เริ่มกระบวนการดิ่งลงไปคอมโบปล่อยสกิล
+                if isReady and not isExecutingCombo then
+                    isExecutingCombo = true
 
                     task.spawn(function()
-                        -- STEP 1: ดิ่งลงมาที่ความสูง 20
+                        -- 1. ดิ่งลงมาความสูงระดับโจมตี
                         currentDynamicHeight = 20
                         task.wait(0.12)
-                        
-                        -- วนลูปปล่อยทีละสกิล โดยกดย้ำซ้ำๆ จนกว่าสกิลนั้นจะเริ่มนับคูลดาวน์จริง (> 0)
+
+                        -- 2. วนลูปปล่อยสกิลทีละอันจนกว่าทุกสกิลจะขึ้นคูลดาวน์ (> 0.5)
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
@@ -344,13 +326,18 @@ function startFarm()
                                 local keyName = tostring(slot.Value)
                                 local startWait = tick()
 
+                                -- กดย้ำปุ่มสกิลนั้นๆ จนกว่าคูลดาวน์จะเริ่มนับถอยหลังจริง
                                 repeat
                                     pressKey(keyName)
                                     task.wait(0.08)
-                                until (cd and cd:IsA("ValueBase") and cd.Value > 0) or (tick() - startWait) > 1.2
+                                until (cd and cd:IsA("ValueBase") and cd.Value > 0.5) or (tick() - startWait) > 1.2
+                                
+                                -- หน่วงเวลาสั้นๆ ให้แอนิเมชันสกิลแรกแสดงผลก่อนไปสกิลถัดไป
+                                task.wait(0.15)
                             end
                         end
-                        
+
+                        -- 3. ตีธรรมดาเสริม
                         local currentChar = LocalPlayer.Character
                         if currentChar then
                             local equippedTool = currentChar:FindFirstChildOfClass("Tool")
@@ -359,33 +346,29 @@ function startFarm()
                             end
                         end
 
-                        -- ค้างต่ออีกเล็กน้อยให้กระสุน/เอฟเฟกต์พุ่งออกจากตัวจนสุด
-                        task.wait(0.2)
+                        -- 4. ค้างต่ออีกนิดเพื่อให้วิถีกระสุนพุ่งออกจากตัวผู้เล่นสมบูรณ์
+                        task.wait(0.25)
 
-                        -- STEP 2: ค่อยๆ ถอยขึ้นไปความสูง 30
-                        currentDynamicHeight = 30
-                        task.wait(0.2)
-
-                        -- STEP 3: จบการดิ่ง กลับขึ้นไปลอยนิ่งรอคูลดาวน์รอบถัดไป
-                        isDiving = false
+                        -- 5. ปล่อยสกิลครบหมดแล้ว ค่อยปลดสถานะให้กลับขึ้นที่สูง
+                        isExecutingCombo = false
                     end)
                 end
 
                 local targetPos = targetHrp.Position
                 local orbitPos
 
-                if isDiving then
+                if isExecutingCombo then
                     -- ขณะดิ่งปล่อยสกิล: หมุนควงรอบตัวมอนสเตอร์
                     local timeNow = tick()
-                    local radius = 20 
-                    local speed = 5   
+                    local radius = 18 
+                    local speed = 4   
                     local angle = timeNow * speed
                     
                     local offsetX = math.cos(angle) * radius
                     local offsetZ = math.sin(angle) * radius
-                    orbitPos = targetPos + Vector3.new(offsetX, currentDynamicHeight, offsetZ)
+                    orbitPos = targetPos + Vector3.new(offsetX, 20, offsetZ)
                 else
-                    -- ขณะรอคูลดาวน์: ลอยนิ่ง และสลับความสูง 50, 60, 70 ทุก 1 วินาที
+                    -- ขณะรอคูลดาวน์: อยู่นิ่งๆ เหนือหัว และสลับความสูง 50, 60, 70 ทุก 1 วินาที
                     if tick() - lastHeightChange >= 1 then
                         heightIndex = (heightIndex % #hoverHeights) + 1
                         currentDynamicHeight = hoverHeights[heightIndex]
@@ -397,22 +380,8 @@ function startFarm()
 
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
-                -- เช็คถ้าระบบไม่ทำดาเมจหลังเริ่มโจมตี 2.5 วินาที ให้เปลี่ยนเป้าหมาย
-                if attackAttemptTime and (tick() - attackAttemptTime > 2.5) then
-                    if initialTargetHealth and targetHum.Health >= initialTargetHealth then
-                        ignoredMonsters[currentTargetModel] = tick() + 15
-                        currentTargetModel = nil
-                        attackAttemptTime = nil
-                        isDiving = false
-                    else
-                        attackAttemptTime = nil
-                    end
-                end
-
             else
-                isDiving = false
-                initialTargetHealth = nil
-                attackAttemptTime = nil
+                isExecutingCombo = false
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
