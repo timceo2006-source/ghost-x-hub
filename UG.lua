@@ -217,7 +217,7 @@ function startFarm()
                     -- เช็คเพิ่มเติมว่ามี Head หรือลักษณะคล้ายมอนสเตอร์จริง
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
                         currentTarget = obj
-                        hrp.Size = Vector3.new(25, 40, 25)
+                        hrp.Size = Vector3.new(40, 40, 40)
                         hrp.Transparency = 0.8
                         hrp.CanCollide = false
                         lastFoundMonsterTime = tick()
@@ -246,7 +246,7 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 40
+                local safeHeight = 20
                 if workspace:FindFirstChild("bossShot") then
                     safeHeight = 50
                     isDodgingBoss = true
