@@ -46,7 +46,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Smart Target & Heart Priority"
+titleLabel.Text = "Ultimate Dungeon Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 12
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -133,8 +133,56 @@ function startFarm()
 
     local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
+    local lastDodgeTime = 0
+    local dodgeDuration = 1.2 -- หน่วงเวลาอยู่บนฟ้าหลบสกิลรัวๆ
 
-    -- ฟังก์ชันคัดเลือกเป้าหมายอัจฉริยะ: เช็คหาหัวใจก่อนเสมอ -> ถ้าไม่มีค่อยหาตัวที่ใกล้ที่สุด
+    -- ระบบตรวจสอบและหลบวงแดง/สกิลอันตราย
+    local function getSafeEscapePosition(hrpPos)
+        local dungeon = workspace:FindFirstChild("dungeon")
+        if not dungeon then return nil, false end
+        
+        local dangerDetected = false
+        local escapeVector = Vector3.new(0, 0, 0)
+        
+        for _, room in ipairs(dungeon:GetChildren()) do
+            if room:IsA("Folder") or room:IsA("Model") then
+                for _, obj in ipairs(room:GetDescendants()) do
+                    if obj:IsA("BasePart") then
+                        local color = obj.Color
+                        local isRed = (color.R > 0.5 and color.G < 0.2 and color.B < 0.2) or 
+                                      string.find(string.lower(obj.Name), "warn") or 
+                                      string.find(string.lower(obj.Name), "zone") or
+                                      string.find(string.lower(obj.Name), "skill") or
+                                      string.find(string.lower(obj.Name), "effect")
+                        
+                        if isRed and obj.Transparency < 0.85 then
+                            local dist = (obj.Position - hrpPos).Magnitude
+                            if dist < 18 then
+                                dangerDetected = true
+                                local pushDir = (hrpPos - obj.Position)
+                                pushDir = Vector3.new(pushDir.X, 0, pushDir.Z).Unit
+                                if pushDir.Magnitude == 0 then pushDir = Vector3.new(1, 0, 0) end
+                                escapeVector = escapeVector + (pushDir * 22)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        if dangerDetected then
+            lastDodgeTime = tick()
+            return hrpPos + escapeVector + Vector3.new(0, 35, 0), true
+        end
+        
+        if tick() - lastDodgeTime < dodgeDuration then
+            return hrpPos + Vector3.new(0, 35, 0), true
+        end
+        
+        return nil, false
+    end
+
+    -- ระบบเลือกเป้าหมาย: หัวใจบอส -> ตัวที่ใกล้ที่สุด
     local function getTarget()
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -147,7 +195,6 @@ function startFarm()
         local nearestEnemy = nil
         local shortestDistance = math.huge
 
-        -- วนลูปทุกห้องใน dungeon เพื่อหาเป้าหมายทั้งหมด
         for _, room in ipairs(dungeon:GetChildren()) do
             if room:IsA("Folder") or room:IsA("Model") then
                 for _, obj in ipairs(room:GetDescendants()) do
@@ -157,11 +204,9 @@ function startFarm()
                         
                         if hum and targetHrp and hum.Health > 0 then
                             if not Players:GetPlayerFromCharacter(obj) then
-                                -- เช็คว่าเป็น "หัวใจบอส" หรือไม่ (มีคำว่า Heart ในชื่อ)
                                 if string.find(string.lower(obj.Name), "heart") then
                                     bestHeart = targetHrp
                                 else
-                                    -- คำนวณหาระยะทางเพื่อหาตัวที่อยู่ใกล้ที่สุด
                                     local dist = (targetHrp.Position - hrp.Position).Magnitude
                                     if dist < shortestDistance then
                                         shortestDistance = dist
@@ -175,7 +220,6 @@ function startFarm()
             end
         end
 
-        -- ถ้าระบบเจอหัวใจบอส ให้สลับไปตีหัวใจทันทีเป็นอันดับแรกสุด
         if bestHeart then
             bestHeart.Size = Vector3.new(25, 25, 25)
             bestHeart.Transparency = 0.8
@@ -183,7 +227,6 @@ function startFarm()
             return bestHeart
         end
 
-        -- ถ้าไม่มีหัวใจ ให้เลือกตัวที่อยู่ใกล้ที่สุด
         if nearestEnemy then
             nearestEnemy.Size = Vector3.new(25, 25, 25)
             nearestEnemy.Transparency = 0.8
@@ -194,7 +237,7 @@ function startFarm()
         return nil
     end
 
-    -- ลูปหลัก: ลอยตัวนิ่งๆ บนหัวเป้าหมายที่เลือก
+    -- ลูปหลักเคลื่อนไหวและหลบภัย
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
@@ -210,20 +253,28 @@ function startFarm()
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0) 
             
-            local targetHrp = getTarget()
-            if targetHrp then
-                lastFoundMonsterTime = tick()
-                local safePos = targetHrp.Position + Vector3.new(0, HOVER_HEIGHT, 0)
-                hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
+            local escapePos, isDanger = getSafeEscapePosition(hrp.Position)
+            if isDanger then
+                hrp.CFrame = CFrame.new(escapePos)
+                timerLabel.Text = "Status: Dodging Hazard!"
             else
-                if tick() - lastFoundMonsterTime > 1.5 then
-                    tryStartGame()
+                local targetHrp = getTarget()
+                if targetHrp then
+                    lastFoundMonsterTime = tick()
+                    timerLabel.Text = "Status: Attacking"
+                    local safePos = targetHrp.Position + Vector3.new(0, HOVER_HEIGHT, 0)
+                    hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
+                else
+                    timerLabel.Text = "Status: Searching..."
+                    if tick() - lastFoundMonsterTime > 1.5 then
+                        tryStartGame()
+                    end
                 end
             end
         end)
     end)
 
-    -- ลูปแยกสำหรับกดสกิลและโจมตีปกติ
+    -- ลูปกดสกิลและโจมตีปกติ
     task.spawn(function()
         while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             pcall(function()
