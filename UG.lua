@@ -186,7 +186,7 @@ function startFarm()
     local currentTarget = nil
     local lastFoundMonsterTime = tick()
     local lastDiveTime = 0
-    local stayDuration = 0.2 -- ปรับเวลาค้างอยู่ข้างล่างให้เหลือ 0.2 วินาทีตามที่ต้องการ
+    local stayDuration = 0.5 -- ปรับเวลาค้างอยู่ข้างล่างให้เหลือ 0.2 วินาทีตามที่ต้องการ
 
     local function getTarget()
         if currentTarget and currentTarget.Parent then
@@ -278,7 +278,7 @@ function startFarm()
                 local skillsReady, items = areSkillsReady()
                 
                 local safeHeight = 50 
-                local diveHeight = 20 
+                local diveHeight = 23 
                 local currentHeight = safeHeight
                 
                 if skillsReady or workspace:FindFirstChild("bossShot") or (tick() - lastDiveTime < stayDuration) then
@@ -289,8 +289,8 @@ function startFarm()
                 end
 
                 local timeNow = tick()
-                local radius = 16 
-                local speed = 3   
+                local radius = 18 
+                local speed = 4   
                 local angle = timeNow * speed
                 
                 local offsetX = math.cos(angle) * radius
