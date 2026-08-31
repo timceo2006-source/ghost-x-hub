@@ -183,34 +183,32 @@ function startFarm()
 
     stopFarm()
 
-    local currentBossModel = nil
+    local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
-    local initialBossHealth = nil
+    local initialTargetHealth = nil
     local hasDealtDamage = false
-    local attackStartTime = 0
 
-    local function getBossAndTargets()
-        -- ถ้าเคยเจอบอสแล้วและบอสยังไม่ตาย ให้ใช้บอสตัวเดิมเป็นหลัก
-        if currentBossModel and currentBossModel.Parent then
-            local hum = currentBossModel:FindFirstChild("Humanoid")
+    local function getTarget()
+        -- ถ้ารู้จักเป้าหมายเดิมอยู่และมันยังไม่ตาย ให้เช็คว่าเป็นลูกน้องหรือบอส
+        if currentTargetModel and currentTargetModel.Parent then
+            local hum = currentTargetModel:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
-                local hrp = currentBossModel:FindFirstChild("HumanoidRootPart")
+                local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     lastFoundMonsterTime = tick()
-                    return hrp, hum, currentBossModel
+                    return hrp, hum, currentTargetModel
                 end
             end
         end
 
-        currentBossModel = nil
-        initialBossHealth = nil
+        currentTargetModel = nil
+        initialTargetHealth = nil
         hasDealtDamage = false
         
-        local bosses = {}
         local minions = {}
-        local char = LocalPlayer.Character
-        local myHrp = char and char:FindFirstChild("HumanoidRootPart")
+        local bosses = {}
 
+        -- ค้นหามอนสเตอร์ทั้งหมดใน Workspace แล้วแยกประเภท (ลูกน้อง vs บอสใหญ่)
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local modelName = obj.Name
@@ -222,8 +220,8 @@ function startFarm()
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                 if hum and hrp and hum.Health > 0 then
-                    local isBoss = modelName:lower().find("boss") or modelName:lower().find("demon lord") or modelName:lower().find("azrallik")
-                    if isBoss then
+                    -- เช็คว่าเป็นบอสใหญ่หรือลูกน้อง (ดูลักษณะชื่อ หรือคำว่า Boss / Demon Lord)
+                    if modelName:lower().find("boss") or modelName:lower().find("demon lord") or modelName:lower().find("azrallik") then
                         table.insert(bosses, {model = obj, hum = hum, hrp = hrp})
                     else
                         table.insert(minions, {model = obj, hum = hum, hrp = hrp})
@@ -232,22 +230,12 @@ function startFarm()
             end
         end
 
-        -- เลือกระหว่างบอสหรือตัวเลือกที่ดีที่สุด
-        if #bosses > 0 then
-            local targetBoss = bosses[math.random(1, #bosses)] -- สลับสุ่มเลือกตัวถ้ามีหลายตัว หรือหยิบตัวแรก
-            currentBossModel = targetBoss.model
-            initialBossHealth = targetBoss.hum.Health
-            hasDealtDamage = false
-            attackStartTime = tick()
-            targetBoss.hrp.Size = Vector3.new(65, 65, 65)
-            targetBoss.hrp.Transparency = 0.8
-            targetBoss.hrp.CanCollide = false
-            lastFoundMonsterTime = tick()
-            return targetBoss.hrp, targetBoss.hum, targetBoss.model
-        end
-
+        -- กฎข้อที่ 1: ถ้ามีลูกน้องเหลืออยู่ ให้เลือกลูกน้องที่ใกล้ที่สุดมากำจัดก่อนเสมอ
         if #minions > 0 then
             local closestMinion = minions[1]
+            local char = LocalPlayer.Character
+            local myHrp = char and char:FindFirstChild("HumanoidRootPart")
+            
             if myHrp then
                 local minDist = (myHrp.Position - closestMinion.hrp.Position).Magnitude
                 for i = 2, #minions do
@@ -258,15 +246,28 @@ function startFarm()
                     end
                 end
             end
-            currentBossModel = closestMinion.model
-            initialBossHealth = closestMinion.hum.Health
+
+            currentTargetModel = closestMinion.model
+            initialTargetHealth = closestMinion.hum.Health
             hasDealtDamage = false
-            attackStartTime = tick()
             closestMinion.hrp.Size = Vector3.new(65, 65, 65)
             closestMinion.hrp.Transparency = 0.8
             closestMinion.hrp.CanCollide = false
             lastFoundMonsterTime = tick()
             return closestMinion.hrp, closestMinion.hum, closestMinion.model
+        end
+
+        -- กฎข้อที่ 2: ถ้าเคลียร์ลูกน้องหมดแล้ว ค่อยหันมาจัดการบอสใหญ่
+        if #bosses > 0 then
+            local targetBoss = bosses[1]
+            currentTargetModel = targetBoss.model
+            initialTargetHealth = targetBoss.hum.Health
+            hasDealtDamage = false
+            targetBoss.hrp.Size = Vector3.new(65, 65, 65)
+            targetBoss.hrp.Transparency = 0.8
+            targetBoss.hrp.CanCollide = false
+            lastFoundMonsterTime = tick()
+            return targetBoss.hrp, targetBoss.hum, targetBoss.model
         end
 
         return nil, nil, nil
@@ -318,18 +319,10 @@ function startFarm()
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-            local bossHrp, bossHum, bossModel = getBossAndTargets()
-            if bossHrp and bossHum then
-                -- เช็คว่าเลือดลดลงไหม ถ้าตีไปแล้ว 3 วินาทีแต่เลือดไม่ลดเลย ให้บังคับเปลี่ยนเป้าหมาย/รีเซ็ตตัวทันที
-                if initialBossHealth then
-                    if bossHum.Health < initialBossHealth then
-                        hasDealtDamage = true
-                    elseif not hasDealtDamage and (tick() - attackStartTime > 3.0) then
-                        -- เลือดไม่ลด บังคับสลับเป้าหมายหนีเพื่อแก้ติดฮิตบล็อก
-                        currentBossModel = nil
-                        initialBossHealth = nil
-                        return
-                    end
+            local targetHrp, targetHum, targetModel = getTarget()
+            if targetHrp and targetHum then
+                if initialTargetHealth and targetHum.Health < initialTargetHealth then
+                    hasDealtDamage = true
                 end
 
                 local skillsReady, items = areSkillsReady()
@@ -338,8 +331,8 @@ function startFarm()
                 local diveHeight = 15 
                 
                 local isBossDown = false
-                local head = bossModel:FindFirstChild("Head")
-                if head and head.Position.Y < bossHrp.Position.Y - 2 then
+                local head = targetModel:FindFirstChild("Head")
+                if head and head.Position.Y < targetHrp.Position.Y - 2 then
                     isBossDown = true
                 end
 
@@ -360,27 +353,10 @@ function startFarm()
                 local offsetX = math.cos(angle) * radius
                 local offsetZ = math.sin(angle) * radius
                 
-                local targetPos = bossHrp.Position
-                
-                local lookAtPos = targetPos
-                if currentHeight == diveHeight then
-                    for _, obj in ipairs(workspace:GetDescendants()) do
-                        if obj:IsA("Model") and obj ~= LocalPlayer.Character and obj ~= bossModel and not Players:GetPlayerFromCharacter(obj) then
-                            local mHrp = obj:FindFirstChild("HumanoidRootPart")
-                            local mHum = obj:FindFirstChild("Humanoid")
-                            if mHrp and mHum and mHum.Health > 0 then
-                                local dist = (hrp.Position - mHrp.Position).Magnitude
-                                if dist < 20 then
-                                    lookAtPos = mHrp.Position
-                                    break
-                                end
-                            end
-                        end
-                    end
-                end
-                
+                local targetPos = targetHrp.Position
                 local orbitPos = targetPos + Vector3.new(offsetX, currentHeight, offsetZ)
-                hrp.CFrame = CFrame.lookAt(orbitPos, lookAtPos)
+                
+                hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
                 if currentHeight == diveHeight and skillsReady then
                     for _, item in ipairs(items) do
@@ -402,7 +378,7 @@ function startFarm()
                 end
             else
                 hasDealtDamage = false
-                initialBossHealth = nil
+                initialTargetHealth = nil
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
