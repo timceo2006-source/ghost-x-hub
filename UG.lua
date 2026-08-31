@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "The Underworld"
-local selectedDifficulty = "Insane"
+local selectedMap = "King's Castle"
+local selectedDifficulty = "Nightmare"
 
 -- ตั้งค่าฮิตบ็อกซ์
 local HITBOX_RADIUS = 150
@@ -190,10 +190,7 @@ function startFarm()
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
     
-    -- สถานะการทำงาน: "HOVER" (รอคูลดาวน์บนฟ้า), "ATTACK" (ปล่อยสกิลที่ความสูง 20), "TRANSITION" (ลอยนิ่งความสูง 35)
     local farmState = "HOVER"
-
-    -- ตั้งค่าระดับความสูงช่วงรอคูลดาวน์ (80, 50, 70)
     local hoverHeights = {120, 40, 70}
     local heightIndex = 1
     local lastHeightChange = tick()
@@ -309,12 +306,10 @@ function startFarm()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                -- เริ่มต้นลำดับการโจมตีเมื่อสกิลพร้อม และอยู่ในสถานะรอคูลดาวน์บนฟ้า
                 if isReady and farmState == "HOVER" then
                     farmState = "ATTACK"
 
                     task.spawn(function()
-                        -- Step 1: ปล่อยสกิลครบที่ความสูง 20 (ตำแหน่งการหมุนจะถูกควบคุมใน Heartbeat)
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
@@ -336,7 +331,6 @@ function startFarm()
                             end
                         end
 
-                        -- ตีธรรมดาปิดท้าย
                         local currentChar = LocalPlayer.Character
                         if currentChar then
                             local equippedTool = currentChar:FindFirstChildOfClass("Tool")
@@ -347,11 +341,9 @@ function startFarm()
 
                         task.wait(0.2)
 
-                        -- Step 2: วาปขึ้นความสูง 35 เพื่อลอยนิ่งพักจังหวะ 0.35 วินาที
                         farmState = "TRANSITION"
                         task.wait(0.35)
 
-                        -- Step 3: วาปขึ้นไปรอคูลดาวน์บนฟ้า (ความสูง 80, 50, 70)
                         heightIndex = 1
                         currentHoverHeight = hoverHeights[1]
                         lastHeightChange = tick()
@@ -359,12 +351,11 @@ function startFarm()
                     end)
                 end
 
-                -- การคำนวณตำแหน่งพิกัดตาม Logic แต่ละช่วง
                 local targetPos = targetHrp.Position
                 local orbitPos
 
                 if farmState == "ATTACK" then
-                    -- ช่วงโจมตี: หมุนควงรอบตัวมอนสเตอร์ที่ความสูง 20
+                    -- ใช้พิกัดที่ถูกต้องจากตัวเก่าเพื่อให้ตีโดนปกติ
                     local timeNow = tick()
                     local radius = 18 
                     local speed = 3   
@@ -375,11 +366,9 @@ function startFarm()
                     orbitPos = targetPos + Vector3.new(offsetX, 18, radius)
 
                 elseif farmState == "TRANSITION" then
-                    -- ช่วงพักจังหวะ: ลอยนิ่งเหนือหัวที่ความสูง 35
                     orbitPos = targetPos + Vector3.new(0, 25, 0)
 
-                else -- farmState == "HOVER"
-                    -- ช่วงรอคูลดาวน์: ลอยนิ่งเหนือหัว และสลับความสูงระหว่าง 80, 50, 70 ทุกๆ 1 วินาที
+                else
                     if tick() - lastHeightChange >= 1 then
                         heightIndex = (heightIndex % #hoverHeights) + 1
                         currentHoverHeight = hoverHeights[heightIndex]
