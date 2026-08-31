@@ -237,6 +237,10 @@ function startFarm()
 
         currentTargetModel = nil
         
+        local heartTarget, heartHrp, heartHum = nil, nil, nil
+        local minionTarget, minionHrp, minionHum = nil, nil, nil
+        local bossTarget, bossHrp, bossHum = nil, nil, nil
+
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
                 local modelName = obj.Name
@@ -248,14 +252,32 @@ function startFarm()
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                 if hum and hrp and hum.Health > 0 then
-                    if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
-                        currentTargetModel = obj
-                        lastFoundMonsterTime = tick()
-                        return hrp, hum
+                    if modelName:find("Heart") then
+                        heartTarget, heartHrp, heartHum = obj, hrp, hum
+                    elseif modelName:find("Minion") then
+                        minionTarget, minionHrp, minionHum = obj, hrp, hum
+                    elseif modelName:find("Azrallik") then
+                        bossTarget, bossHrp, bossHum = obj, hrp, hum
                     end
                 end
             end
         end
+
+        -- จัดลำดับความสำคัญ: ตีหัวใจ (Heart) ก่อน -> ลูกน้อง (Minion) -> บอสหลัก (Azrallik)
+        if heartTarget and heartHrp and heartHum then
+            currentTargetModel = heartTarget
+            lastFoundMonsterTime = tick()
+            return heartHrp, heartHum
+        elseif minionTarget and minionHrp and minionHum then
+            currentTargetModel = minionTarget
+            lastFoundMonsterTime = tick()
+            return minionHrp, minionHum
+        elseif bossTarget and bossHrp and bossHum then
+            currentTargetModel = bossTarget
+            lastFoundMonsterTime = tick()
+            return bossHrp, bossHum
+        end
+
         return nil, nil
     end
 
