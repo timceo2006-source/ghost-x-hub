@@ -3,10 +3,6 @@ local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "King's Castle"
 local selectedDifficulty = "Nightmare"
 
--- ตั้งค่าฮิตบ็อกซ์
-local HITBOX_RADIUS = 150
-local HITBOX_SIZE = Vector3.new(20, 20, 20)
-
 -- ตั้งค่าเปิดใช้งานระบบ
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
@@ -19,6 +15,7 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local TeleportService = game:GetService("TeleportService")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ==================== GUI (มุมขวาบน) ====================
@@ -157,7 +154,7 @@ local function pressKey(keyStr)
     if success and keyCode then
         task.spawn(function()
             VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-            task.wait(0.03)
+            task.wait(0.04)
             VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
         end)
     end
@@ -193,27 +190,6 @@ function startFarm()
     local farmState = "HOVER"
     local lastToggleTime = tick()
     local togglePosFlag = false
-
-    local function expandNearbyHitboxes(playerHrp)
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                local modelName = obj.Name
-                if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
-                    local hum = obj:FindFirstChild("Humanoid")
-                    local hrp = obj:FindFirstChild("HumanoidRootPart")
-
-                    if hum and hrp and hum.Health > 0 then
-                        local distance = (hrp.Position - playerHrp.Position).Magnitude
-                        if distance <= HITBOX_RADIUS then
-                            hrp.Size = HITBOX_SIZE
-                            hrp.Transparency = 0.8
-                            hrp.CanCollide = false
-                        end
-                    end
-                end
-            end
-        end
-    end
 
     local function getTarget()
         if currentTargetModel and currentTargetModel.Parent then
@@ -293,6 +269,13 @@ function startFarm()
         return false
     end
 
+    -- ฟังก์ชันย้ายตำแหน่งแบบสมูท ป้องกัน Anti-Cheat เช็กเจอวาปทันที
+    local function smoothMoveTo(hrp, targetCFrame)
+        local tweenInfo = TweenInfo.new(0.12, Enum.EasingStyle.Linear)
+        local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
+        tween:Play()
+    end
+
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
@@ -303,13 +286,6 @@ function startFarm()
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
 
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
-            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-
-            expandNearbyHitboxes(hrp)
-
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
                 -- เริ่มคอมโบเมื่อสกิล Q พร้อมและสถานะเป็น HOVER
@@ -319,12 +295,11 @@ function startFarm()
                     task.spawn(function()
                         local initialHealth = targetHum.Health
 
-                        -- 1. วาปไปด้านหน้ามอนสเตอร์ แล้วกด Q
+                        -- 1. เคลื่อนที่ไปด้านหน้ามอนสเตอร์ แล้วกด Q
                         farmState = "FRONT_Q"
                         task.wait(0.2)
                         pressKey("Q")
 
-                        -- รอเช็กว่าสกิลติดคูลดาวน์หรือเลือดลดลง
                         local waitTime = tick()
                         while not isSkillOnCooldown("Q") and targetHum.Health >= initialHealth do
                             task.wait(0.05)
@@ -332,10 +307,9 @@ function startFarm()
                         end
                         task.wait(0.2)
 
-                        -- บันทึกเลือดปัจจุบันเพื่อเช็กสเต็ปถัดไป
                         initialHealth = targetHum.Health
 
-                        -- 2. วาปไปด้านหลังมอนสเตอร์ แล้วเช็กสกิล/เลือด
+                        -- 2. เคลื่อนที่ไปด้านหลังมอนสเตอร์
                         farmState = "BACK_CHECK"
                         task.wait(0.2)
                         
@@ -346,7 +320,7 @@ function startFarm()
                         end
                         task.wait(0.2)
 
-                        -- 3. เข้าสู่โหมดสลับหลบ (บนหัว 100 / ใต้เท้า 30 ทุกๆ 1 วิ) จนกว่าจะครบรอบหรือพร้อมสกิลใหม่
+                        -- 3. เข้าสู่โหมดหลบเลี่ยง
                         farmState = "EVADE_HOVER"
                         lastToggleTime = tick()
                         togglePosFlag = false
@@ -355,47 +329,40 @@ function startFarm()
 
                 local targetPos = targetHrp.Position
                 local targetLookVector = targetHrp.CFrame.LookVector
-                local orbitPos
+                local destCFrame
 
                 if farmState == "FRONT_Q" then
-                    -- ด้านหน้ามอนสเตอร์ (ห่างออกไป 8 หน่วยด้านหน้า)
-                    orbitPos = targetPos - (targetLookVector * 8) + Vector3.new(0, 2, 0)
-                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+                    destCFrame = CFrame.lookAt(targetPos - (targetLookVector * 10) + Vector3.new(0, 3, 0), targetPos)
+                    smoothMoveTo(hrp, destCFrame)
                     return
 
                 elseif farmState == "BACK_CHECK" then
-                    -- ด้านหลังมอนสเตอร์ (ห่างออกไป 8 หน่วยด้านหลัง)
-                    orbitPos = targetPos + (targetLookVector * 8) + Vector3.new(0, 2, 0)
-                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+                    destCFrame = CFrame.lookAt(targetPos + (targetLookVector * 10) + Vector3.new(0, 3, 0), targetPos)
+                    smoothMoveTo(hrp, destCFrame)
                     return
 
                 elseif farmState == "EVADE_HOVER" then
-                    -- สลับทุกๆ 1 วินาที: บนหัว (ระยะ 100) กับ ใต้เท้า (ระยะ 30)
                     if tick() - lastToggleTime >= 1 then
                         togglePosFlag = not togglePosFlag
                         lastToggleTime = tick()
                     end
 
                     if togglePosFlag then
-                        -- บนหัว 100
-                        orbitPos = targetPos + Vector3.new(0, 100, 0)
+                        destCFrame = CFrame.lookAt(targetPos + Vector3.new(0, 45, 0), targetPos)
                     else
-                        -- ใต้เท้า 30 (ใต้พื้นดินลงไป)
-                        orbitPos = targetPos - Vector3.new(0, 30, 0)
+                        destCFrame = CFrame.lookAt(targetPos - Vector3.new(0, 15, 0), targetPos)
                     end
 
-                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+                    smoothMoveTo(hrp, destCFrame)
 
-                    -- ถ้าสกิล Q พร้อมแล้ว ให้กลับไปสถานะ HOVER เพื่อเริ่มคอมโบใหม่
                     if checkSkillReady("Q") then
                         farmState = "HOVER"
                     end
                     return
 
                 else
-                    -- สถานะโฮเวอร์ปกติ วนรอบๆ มอนสเตอร์
-                    orbitPos = targetPos + Vector3.new(0, 50, 0)
-                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+                    destCFrame = CFrame.lookAt(targetPos + Vector3.new(0, 30, 0), targetPos)
+                    smoothMoveTo(hrp, destCFrame)
                 end
 
             else
@@ -451,13 +418,10 @@ task.spawn(function()
             else
                 timerLabel.Text = "In Dungeon / Farming"
                 
-                -- หน่วงเวลา 5 วินาทีก่อนเริ่มดันเจี้ยน หากยังไม่พบมอนสเตอร์
                 local checkMonsterTime = tick()
                 while game.PlaceId ~= TARGET_PLACE_ID and getgenv().AutoCreateAndStart do
                     local _, hum = getTarget()
-                    if hum then
-                        break
-                    end
+                    if hum then break end
                     if tick() - checkMonsterTime >= 5 then
                         timerLabel.Text = "Waiting for monsters..."
                         break
