@@ -1,9 +1,13 @@
 local TARGET_PLACE_ID = 77649408247578
 
 local selectedMap = "King's Castle"
-local selectedDifficulty = "Insane"
+local selectedDifficulty = "Nightmare"
 
--- ตั้งค่าให้เปิดทั้งฟาร์มและออโต้สร้างห้องตั้งแต่เริ่มรันสคริปต์
+-- ตั้งค่าฮิตบ็อกซ์
+local HITBOX_RADIUS = 150
+local HITBOX_SIZE = Vector3.new(20, 20, 20)
+
+-- ตั้งค่าเปิดใช้งานระบบ
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
@@ -17,7 +21,7 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== สร้าง GUI (มุมขวาบน) ====================
+-- ==================== GUI (มุมขวาบน) ====================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "DungeonFarmGui"
 screenGui.ResetOnSpawn = false
@@ -153,7 +157,7 @@ local function pressKey(keyStr)
     if success and keyCode then
         task.spawn(function()
             VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-            task.wait(0.02)
+            task.wait(0.03)
             VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
         end)
     end
@@ -183,28 +187,52 @@ function startFarm()
 
     stopFarm()
 
-    local currentTarget = nil
-    local lastSkillTime = 0
+    local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
-    local isDodgingBoss = false
+    
+    local farmState = "HOVER"
+    local hoverHeights = {120, 40, 70}
+    local heightIndex = 1
+    local lastHeightChange = tick()
+    local currentHoverHeight = hoverHeights[1]
+
+    local function expandNearbyHitboxes(playerHrp)
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+                local modelName = obj.Name
+                if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
+                    local hum = obj:FindFirstChild("Humanoid")
+                    local hrp = obj:FindFirstChild("HumanoidRootPart")
+
+                    if hum and hrp and hum.Health > 0 then
+                        local distance = (hrp.Position - playerHrp.Position).Magnitude
+                        if distance <= HITBOX_RADIUS then
+                            hrp.Size = HITBOX_SIZE
+                            hrp.Transparency = 0.8
+                            hrp.CanCollide = false
+                        end
+                    end
+                end
+            end
+        end
+    end
 
     local function getTarget()
-        if currentTarget and currentTarget.Parent then
-            local hum = currentTarget:FindFirstChild("Humanoid")
+        if currentTargetModel and currentTargetModel.Parent then
+            local hum = currentTargetModel:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
-                local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
+                local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     lastFoundMonsterTime = tick()
-                    return hrp
+                    return hrp, hum
                 end
             end
         end
 
-        currentTarget = nil
+        currentTargetModel = nil
         
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                -- 🛑 ระบบ Blacklist ป้องกันไม่ให้ล็อคพวกพรีวิว ตัวละครผู้เล่น หรือของแต่งที่ไม่ใช่มอนสเตอร์
                 local modelName = obj.Name
                 if modelName:find("_reyillsPreview") or modelName:find("Preview") then
                     continue
@@ -214,19 +242,69 @@ function startFarm()
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                 if hum and hrp and hum.Health > 0 then
-                    -- เช็คเพิ่มเติมว่ามี Head หรือลักษณะคล้ายมอนสเตอร์จริง
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
-                        currentTarget = obj
-                        hrp.Size = Vector3.new(25, 25, 25)
-                        hrp.Transparency = 0.8
-                        hrp.CanCollide = false
+                        currentTargetModel = obj
                         lastFoundMonsterTime = tick()
-                        return hrp
+                        return hrp, hum
                     end
                 end
             end
         end
+        return nil, nil
+    end
+
+    -- ฟังก์ชันค้นหา Tool ตามปุ่มสกิล (เช่น "Q" หรือ "1")
+    local function getSkillTool(keyName)
+        local items = {}
+        if LocalPlayer:FindFirstChild("Backpack") then
+            for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
+        end
+        if LocalPlayer.Character then
+            for _, v in ipairs(LocalPlayer.Character:GetChildren()) do table.insert(items, v) end
+        end
+
+        for _, item in ipairs(items) do
+            if item:IsA("Tool") then
+                local slot = item:FindFirstChild("abilitySlot")
+                if slot and slot:IsA("ValueBase") and tostring(slot.Value):upper() == keyName:upper() then
+                    return item
+                end
+            end
+        end
         return nil
+    end
+
+    -- ตรวจสอบว่าสกิลเริ่มติดคูลดาวน์แล้วหรือยัง
+    local function isSkillOnCooldown(keyName)
+        local tool = getSkillTool(keyName)
+        if tool then
+            local cd = tool:FindFirstChild("cooldown")
+            if cd and cd:IsA("ValueBase") then
+                return cd.Value > 0.2
+            end
+        end
+        return false
+    end
+
+    -- ตรวจสอบว่าสกิลพร้อมใช้ไหม (คูลดาวน์หมด)
+    local function checkSkillsReady()
+        local qTool = getSkillTool("Q")
+        local oneTool = getSkillTool("1")
+        
+        local qReady = false
+        local oneReady = false
+
+        if qTool then
+            local cd = qTool:FindFirstChild("cooldown")
+            if cd and cd:IsA("ValueBase") and cd.Value <= 0.1 then qReady = true end
+        end
+
+        if oneTool then
+            local cd = oneTool:FindFirstChild("cooldown")
+            if cd and cd:IsA("ValueBase") and cd.Value <= 0.1 then oneReady = true end
+        end
+
+        return qReady or oneReady, qTool ~= nil or oneTool ~= nil
     end
 
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
@@ -244,64 +322,97 @@ function startFarm()
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-            local targetHrp = getTarget()
-            if targetHrp then
-                local safeHeight = 30
-                if workspace:FindFirstChild("bossShot") then
-                    safeHeight = 50
-                    isDodgingBoss = true
-                else
-                    isDodgingBoss = false
+            expandNearbyHitboxes(hrp)
+
+            local targetHrp, targetHum = getTarget()
+            if targetHrp and targetHum then
+                local isReady, hasAnySkill = checkSkillsReady()
+
+                -- เริ่มคอมโบเมื่อสกิลพร้อมและสถานะเป็น HOVER
+                if isReady and farmState == "HOVER" then
+                    farmState = "COMBO_STEP_1"
+
+                    task.spawn(function()
+                        -- เฟสที่ 1: อยู่ใต้เท้า (ใต้พื้นดิน) แล้วกดสกิล Q
+                        farmState = "UNDERGROUND_Q"
+                        task.wait(0.2)
+                        
+                        pressKey("Q")
+                        
+                        -- รอจนกว่าสกิล Q จะเริ่มติดคูลดาวน์ (การันตีว่ากดติดแน่นอนก่อนขยับต่อ)
+                        local waitCdStart = tick()
+                        while not isSkillOnCooldown("Q") do
+                            task.wait(0.05)
+                            if (tick() - waitCdStart) > 1.5 then break end
+                        end
+                        task.wait(0.2)
+
+                        -- เฟสที่ 2: วาปขึ้นไปด้านบน แล้วกดสกิล 1
+                        farmState = "ABOVE_1"
+                        task.wait(0.25)
+
+                        pressKey("1")
+                        
+                        -- รอจนกว่าสกิล 1 จะเริ่มติดคูลดาวน์
+                        local waitCdStart2 = tick()
+                        while not isSkillOnCooldown("1") do
+                            task.wait(0.05)
+                            if (tick() - waitCdStart2) > 1.5 then break end
+                        end
+                        task.wait(0.3)
+
+                        -- พักจังหวะสั้นๆ แล้วกลับสู่สถานะโฮเวอร์ตามปกติ
+                        farmState = "TRANSITION"
+                        task.wait(0.4)
+
+                        heightIndex = 1
+                        currentHoverHeight = hoverHeights[1]
+                        lastHeightChange = tick()
+                        farmState = "HOVER"
+                    end)
                 end
-                local safePos = targetHrp.Position + Vector3.new(0, safeHeight, 0)
-                hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
+
+                local targetPos = targetHrp.Position
+                local orbitPos
+
+                if farmState == "UNDERGROUND_Q" then
+                    -- ตำแหน่งใต้เท้า / ใต้พื้นดิน (ต่ำกว่ามอนสเตอร์ลงไป 12 หน่วย)
+                    orbitPos = targetPos - Vector3.new(0, 12, 0)
+                    -- หันหน้ามองตรงปกติหรือขึ้นเล็กน้อย
+                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos + Vector3.new(0, 2, 0))
+                    return
+
+                elseif farmState == "ABOVE_1" then
+                    -- ตำแหน่งด้านบน (สูงขึ้นไป 12 หน่วยจากมอนสเตอร์)
+                    orbitPos = targetPos + Vector3.new(0, 12, 0)
+                    -- หันหน้าขึ้นฟ้า (มองตรงขึ้นไปข้างบนเพื่อดันมอนลงมา)
+                    hrp.CFrame = CFrame.lookAt(orbitPos, orbitPos + Vector3.new(0, 50, 0))
+                    return
+
+                elseif farmState == "TRANSITION" then
+                    orbitPos = targetPos + Vector3.new(0, 25, 0)
+                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+                    return
+
+                else
+                    -- สถานะโฮเวอร์ปกติ วนรอบๆ มอนสเตอร์
+                    if tick() - lastHeightChange >= 1 then
+                        heightIndex = (heightIndex % #hoverHeights) + 1
+                        currentHoverHeight = hoverHeights[heightIndex]
+                        lastHeightChange = tick()
+                    end
+
+                    orbitPos = targetPos + Vector3.new(0, currentHoverHeight, 0)
+                    hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+                end
+
             else
-                isDodgingBoss = false
+                farmState = "HOVER"
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
             end
         end)
-    end)
-
-    task.spawn(function()
-        while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
-            task.wait(0.05)
-            pcall(function()
-                local char = LocalPlayer.Character
-                if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
-
-                local targetHrp = getTarget()
-                if not targetHrp or isDodgingBoss then return end
-
-                if tick() - lastSkillTime > 0.15 then
-                    local items = {}
-                    if LocalPlayer:FindFirstChild("Backpack") then
-                        for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
-                    end
-                    for _, v in ipairs(char:GetChildren()) do table.insert(items, v) end
-
-                    for _, item in ipairs(items) do
-                        if item:IsA("Tool") then
-                            local slot = item:FindFirstChild("abilitySlot")
-                            local cd = item:FindFirstChild("cooldown")
-                            if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
-                                if cd.Value <= 0.1 then
-                                    pressKey(tostring(slot.Value))
-                                    lastSkillTime = tick()
-                                    return
-                                end
-                            end
-                        end
-                    end
-                end
-
-                local equippedTool = char:FindFirstChildOfClass("Tool")
-                if equippedTool then
-                    equippedTool:Activate()
-                end
-            end)
-        end
     end)
 end
 
