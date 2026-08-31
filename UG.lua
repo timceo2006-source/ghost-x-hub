@@ -189,7 +189,15 @@ function startFarm()
 
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
-    local isExecutingCombo = false
+    
+    -- สถานะการทำงาน: "HOVER" (รอคูลดาวน์บนฟ้า), "ATTACK" (ปล่อยสกิลที่ความสูง 20), "TRANSITION" (ลอยนิ่งความสูง 35)
+    local farmState = "HOVER"
+
+    -- ตั้งค่าระดับความสูงช่วงรอคูลดาวน์ (80, 50, 70)
+    local hoverHeights = {80, 50, 70}
+    local heightIndex = 1
+    local lastHeightChange = tick()
+    local currentHoverHeight = hoverHeights[1]
 
     local function expandNearbyHitboxes(playerHrp)
         for _, obj in ipairs(workspace:GetDescendants()) do
@@ -301,12 +309,12 @@ function startFarm()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                -- เริ่มกดปล่อยสกิลเมื่อสกิลพร้อมครบทั้ง 2 อัน
-                if isReady and not isExecutingCombo then
-                    isExecutingCombo = true
+                -- เริ่มต้นลำดับการโจมตีเมื่อสกิลพร้อม และอยู่ในสถานะรอคูลดาวน์บนฟ้า
+                if isReady and farmState == "HOVER" then
+                    farmState = "ATTACK"
 
                     task.spawn(function()
-                        -- 1. วนปล่อยทีละสกิล: กดย้ำๆ จนกว่าคูลดาวน์จะเริ่มนับ (> 0.2)
+                        -- Step 1: ปล่อยสกิลครบที่ความสูง 20 (ตำแหน่งการหมุนจะถูกควบคุมใน Heartbeat)
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
@@ -328,7 +336,7 @@ function startFarm()
                             end
                         end
 
-                        -- 2. ตีธรรมดาเสริม
+                        -- ตีธรรมดาปิดท้าย
                         local currentChar = LocalPlayer.Character
                         if currentChar then
                             local equippedTool = currentChar:FindFirstChildOfClass("Tool")
@@ -337,26 +345,54 @@ function startFarm()
                             end
                         end
 
-                        task.wait(0.25)
-                        isExecutingCombo = false
+                        task.wait(0.2)
+
+                        -- Step 2: วาปขึ้นความสูง 35 เพื่อลอยนิ่งพักจังหวะ 0.35 วินาที
+                        farmState = "TRANSITION"
+                        task.wait(0.35)
+
+                        -- Step 3: วาปขึ้นไปรอคูลดาวน์บนฟ้า (ความสูง 80, 50, 70)
+                        heightIndex = 1
+                        currentHoverHeight = hoverHeights[1]
+                        lastHeightChange = tick()
+                        farmState = "HOVER"
                     end)
                 end
 
-                -- ลอยนิ่งควงรอบมอนสเตอร์ที่ระดับความสูง 20 ตลอดเวลา (ไม่บินขึ้นฟ้าแล้ว)
+                -- การคำนวณตำแหน่งพิกัดตาม Logic แต่ละช่วง
                 local targetPos = targetHrp.Position
-                local timeNow = tick()
-                local radius = 18 
-                local speed = 4   
-                local angle = timeNow * speed
-                
-                local offsetX = math.cos(angle) * radius
-                local offsetZ = math.sin(angle) * radius
-                local orbitPos = targetPos + Vector3.new(offsetX, 20, offsetZ)
+                local orbitPos
+
+                if farmState == "ATTACK" then
+                    -- ช่วงโจมตี: หมุนควงรอบตัวมอนสเตอร์ที่ความสูง 20
+                    local timeNow = tick()
+                    local radius = 18 
+                    local speed = 4   
+                    local angle = timeNow * speed
+                    
+                    local offsetX = math.cos(angle) * radius
+                    local offsetZ = math.sin(angle) * radius
+                    orbitPos = targetPos + Vector3.new(offsetX, 20, offsetZ)
+
+                elseif farmState == "TRANSITION" then
+                    -- ช่วงพักจังหวะ: ลอยนิ่งเหนือหัวที่ความสูง 35
+                    orbitPos = targetPos + Vector3.new(0, 35, 0)
+
+                else -- farmState == "HOVER"
+                    -- ช่วงรอคูลดาวน์: ลอยนิ่งเหนือหัว และสลับความสูงระหว่าง 80, 50, 70 ทุกๆ 1 วินาที
+                    if tick() - lastHeightChange >= 1 then
+                        heightIndex = (heightIndex % #hoverHeights) + 1
+                        currentHoverHeight = hoverHeights[heightIndex]
+                        lastHeightChange = tick()
+                    end
+
+                    orbitPos = targetPos + Vector3.new(0, currentHoverHeight, 0)
+                end
 
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
             else
-                isExecutingCombo = false
+                farmState = "HOVER"
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
