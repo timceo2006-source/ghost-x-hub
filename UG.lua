@@ -246,7 +246,7 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 30
+                local safeHeight = 40
                 if workspace:FindFirstChild("bossShot") then
                     safeHeight = 50
                     isDodgingBoss = true
