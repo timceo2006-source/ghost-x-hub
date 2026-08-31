@@ -188,7 +188,7 @@ function startFarm()
     local initialTargetHealth = nil
     local attackAttemptTime = nil
     local isDiving = false
-    local currentDynamicHeight = 60 -- ความสูงเริ่มต้นสำหรับการรอคูลดาวน์
+    local currentDynamicHeight = 60
     local ignoredMonsters = {}
 
     local function isIgnored(model)
@@ -245,6 +245,7 @@ function startFarm()
         return nil, nil
     end
 
+    -- ตรวจสอบคูลดาวน์สกิลอย่างแม่นยำ (ต้อง <= 0 รองรับทั้งค่า 0 และค่าติดลบ)
     local function checkSkillsReady()
         local readyTools = {}
         local totalSkills = 0
@@ -263,7 +264,8 @@ function startFarm()
                 local cd = item:FindFirstChild("cooldown")
                 if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                     totalSkills = totalSkills + 1
-                    if cd.Value <= 0.1 then
+                    -- ค่าคูลดาวน์ต้องคูลดาวน์เสร็จสิ้นจริง (<= 0)
+                    if cd.Value <= 0 then
                         table.insert(readyTools, item)
                     end
                 end
@@ -296,7 +298,7 @@ function startFarm()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                -- เงื่อนไขเมื่อสกิลพร้อม 2 อัน ให้ทำการโจมตีตาม Step ความสูงที่กำหนด
+                -- ต้องรอให้สกิลคูลดาวน์เสร็จครบทุกอันจริงๆ (<= 0) ถึงจะเริ่มลงไปปล่อย
                 if isReady and not isDiving then
                     isDiving = true
                     attackAttemptTime = tick()
