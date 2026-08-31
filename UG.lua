@@ -253,7 +253,7 @@ function startFarm()
         return nil, nil
     end
 
-    -- ฟังก์ชันค้นหา Tool ตามปุ่มสกิล (เช่น "Q" หรือ "1")
+    -- ฟังก์ชันค้นหา Tool ตามปุ่มสกิล
     local function getSkillTool(keyName)
         local items = {}
         if LocalPlayer:FindFirstChild("Backpack") then
@@ -274,37 +274,25 @@ function startFarm()
         return nil
     end
 
-    -- ตรวจสอบว่าสกิลเริ่มติดคูลดาวน์แล้วหรือยัง
-    local function isSkillOnCooldown(keyName)
-        local tool = getSkillTool(keyName)
-        if tool then
-            local cd = tool:FindFirstChild("cooldown")
-            if cd and cd:IsA("ValueBase") then
-                return cd.Value > 0.2
-            end
-        end
-        return false
-    end
-
     -- ตรวจสอบว่าสกิลพร้อมใช้ไหม (คูลดาวน์หมด)
     local function checkSkillsReady()
         local qTool = getSkillTool("Q")
-        local oneTool = getSkillTool("1")
+        local eTool = getSkillTool("E")
         
         local qReady = false
-        local oneReady = false
+        local eReady = false
 
         if qTool then
             local cd = qTool:FindFirstChild("cooldown")
             if cd and cd:IsA("ValueBase") and cd.Value <= 0.1 then qReady = true end
         end
 
-        if oneTool then
-            local cd = oneTool:FindFirstChild("cooldown")
-            if cd and cd:IsA("ValueBase") and cd.Value <= 0.1 then oneReady = true end
+        if eTool then
+            local cd = eTool:FindFirstChild("cooldown")
+            if cd and cd:IsA("ValueBase") and cd.Value <= 0.1 then eReady = true end
         end
 
-        return qReady or oneReady, qTool ~= nil or oneTool ~= nil
+        return qReady or eReady, qTool ~= nil or eTool ~= nil
     end
 
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
@@ -330,40 +318,37 @@ function startFarm()
 
                 -- เริ่มคอมโบเมื่อสกิลพร้อมและสถานะเป็น HOVER
                 if isReady and farmState == "HOVER" then
-                    farmState = "COMBO_STEP_1"
+                    farmState = "COMBO_ACTIVE"
 
                     task.spawn(function()
-                        -- เฟสที่ 1: อยู่ใต้เท้า (ใต้พื้นดิน) แล้วกดสกิล Q
+                        -- เฟสที่ 1: มุดลงใต้เท้า (ใต้พื้นดิน) แล้วกดสกิล Q
                         farmState = "UNDERGROUND_Q"
-                        task.wait(0.2)
+                        task.wait(0.15)
                         
+                        local initialHealth = targetHum.Health
                         pressKey("Q")
                         
-                        -- รอจนกว่าสกิล Q จะเริ่มติดคูลดาวน์ (การันตีว่ากดติดแน่นอนก่อนขยับต่อ)
-                        local waitCdStart = tick()
-                        while not isSkillOnCooldown("Q") do
+                        -- รอจนกว่าดาเมจจะเข้า (เลือดมอนลดลง) หรือหมดเวลา 1.5 วินาที ค่อยขยับขึ้น
+                        local waitDamageTime = tick()
+                        while targetHum and targetHum.Health > 0 do
+                            if targetHum.Health < initialHealth or (tick() - waitDamageTime) > 1.5 then
+                                break
+                            end
                             task.wait(0.05)
-                            if (tick() - waitCdStart) > 1.5 then break end
                         end
+                        
+                        task.wait(0.1)
+
+                        -- เฟสที่ 2: วาปขึ้นไปด้านบน หันหน้าขึ้นฟ้า รอยิงสกิล E
+                        farmState = "ABOVE_E"
                         task.wait(0.2)
 
-                        -- เฟสที่ 2: วาปขึ้นไปด้านบน แล้วกดสกิล 1
-                        farmState = "ABOVE_1"
-                        task.wait(0.25)
-
-                        pressKey("1")
-                        
-                        -- รอจนกว่าสกิล 1 จะเริ่มติดคูลดาวน์
-                        local waitCdStart2 = tick()
-                        while not isSkillOnCooldown("1") do
-                            task.wait(0.05)
-                            if (tick() - waitCdStart2) > 1.5 then break end
-                        end
-                        task.wait(0.3)
+                        pressKey("E")
+                        task.wait(0.4) -- รอให้สกิล E ทำงานเสร็จสิ้นเต็มที่
 
                         -- พักจังหวะสั้นๆ แล้วกลับสู่สถานะโฮเวอร์ตามปกติ
                         farmState = "TRANSITION"
-                        task.wait(0.4)
+                        task.wait(0.3)
 
                         heightIndex = 1
                         currentHoverHeight = hoverHeights[1]
@@ -378,14 +363,13 @@ function startFarm()
                 if farmState == "UNDERGROUND_Q" then
                     -- ตำแหน่งใต้เท้า / ใต้พื้นดิน (ต่ำกว่ามอนสเตอร์ลงไป 12 หน่วย)
                     orbitPos = targetPos - Vector3.new(0, 12, 0)
-                    -- หันหน้ามองตรงปกติหรือขึ้นเล็กน้อย
                     hrp.CFrame = CFrame.lookAt(orbitPos, targetPos + Vector3.new(0, 2, 0))
                     return
 
-                elseif farmState == "ABOVE_1" then
+                elseif farmState == "ABOVE_E" then
                     -- ตำแหน่งด้านบน (สูงขึ้นไป 12 หน่วยจากมอนสเตอร์)
                     orbitPos = targetPos + Vector3.new(0, 12, 0)
-                    -- หันหน้าขึ้นฟ้า (มองตรงขึ้นไปข้างบนเพื่อดันมอนลงมา)
+                    -- หันหน้าขึ้นฟ้า (มองตรงขึ้นไปด้านบนเพื่อดันมอน)
                     hrp.CFrame = CFrame.lookAt(orbitPos, orbitPos + Vector3.new(0, 50, 0))
                     return
 
@@ -443,6 +427,7 @@ task.spawn(function()
                     end
 
                     if startDungeonRemote then
+                        -- เพิ่มเวลารอ 5 วินาทีก่อนกดเริ่มเกมตามที่คุณต้องการ
                         for i = 5, 1, -1 do
                             if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
                             timerLabel.Text = "Starting in: " .. i .. "s"
