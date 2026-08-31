@@ -3,9 +3,9 @@ local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "King's Castle"
 local selectedDifficulty = "Nightmare"
 
--- ตั้งค่าฮิตบ็อกซ์
+-- ตั้งค่าฮิตบ็อกซ์ (ปรับขนาดลงเพื่อให้สกิลและอาวุธฟันโดนแม่นยำขึ้น)
 local HITBOX_RADIUS = 150 -- ระยะขยายฮิตบ็อกซ์รอบตัวผู้เล่น (Studs)
-local HITBOX_SIZE = Vector3.new(60, 60, 60) -- ขนาดฮิตบ็อกซ์ที่ต้องการขยาย
+local HITBOX_SIZE = Vector3.new(20, 20, 20) -- ขนาดฮิตบ็อกซ์ที่เหมาะสม
 
 -- ตั้งค่าให้เปิดทั้งฟาร์มและออโต้สร้างห้องตั้งแต่เริ่มรันสคริปต์
 getgenv().AutoCreateAndStart = true
@@ -192,8 +192,13 @@ function startFarm()
     local initialTargetHealth = nil
     local attackAttemptTime = nil
     local isDiving = false
-    local currentDynamicHeight = 60
     local ignoredMonsters = {}
+
+    -- ตั้งค่าระดับความสูงสำหรับช่วงรอคูลดาวน์
+    local hoverHeights = {50, 60, 70}
+    local heightIndex = 1
+    local lastHeightChange = tick()
+    local currentDynamicHeight = hoverHeights[1]
 
     local function isIgnored(model)
         if ignoredMonsters[model] then
@@ -206,7 +211,6 @@ function startFarm()
         return false
     end
 
-    -- ฟังก์ชันขยายฮิตบ็อกซ์มอนสเตอร์ทุกตัวในระยะรอบตัวผู้เล่น
     local function expandNearbyHitboxes(playerHrp)
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) and not isIgnored(obj) then
@@ -315,20 +319,20 @@ function startFarm()
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-            -- ทำงานขยายฮิตบ็อกซ์มอนสเตอร์ทั้งหมดในระยะ
             expandNearbyHitboxes(hrp)
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
+                -- เริ่มต้นดิ่งลงไปใช้สกิลเมื่อคูลดาวน์พร้อม
                 if isReady and not isDiving then
                     isDiving = true
                     attackAttemptTime = tick()
                     initialTargetHealth = targetHum.Health
 
                     task.spawn(function()
-                        -- STEP 1: ดิ่งลงไปปล่อยสกิลที่ความสูง 20
+                        -- STEP 1: ดิ่งลงไปหมุนปล่อยสกิลที่ความสูง 20
                         currentDynamicHeight = 20
                         task.wait(0.12)
                         
@@ -348,31 +352,39 @@ function startFarm()
                             end
                         end
 
-                        -- STEP 2: ขึ้นมารอ 1 วินาที ที่ความสูง 30
+                        -- STEP 2: ขึ้นมารอ 0.3 วินาที ที่ความสูง 30
                         currentDynamicHeight = 30
                         task.wait(0.3)
 
-                        -- STEP 3: ขึ้นไปรอคูลดาวน์ที่ความสูง 60
-                        currentDynamicHeight = 60
+                        -- STEP 3: จบการดิ่ง กลับขึ้นไปลอยนิ่งรอคูลดาวน์
                         isDiving = false
                     end)
                 end
 
-                if not isDiving then
-                    currentDynamicHeight = 60
+                local targetPos = targetHrp.Position
+                local orbitPos
+
+                if isDiving then
+                    -- ขณะปล่อยสกิล: หมุนรอบตัวมอนสเตอร์
+                    local timeNow = tick()
+                    local radius = 20 
+                    local speed = 5   
+                    local angle = timeNow * speed
+                    
+                    local offsetX = math.cos(angle) * radius
+                    local offsetZ = math.sin(angle) * radius
+                    orbitPos = targetPos + Vector3.new(offsetX, currentDynamicHeight, offsetZ)
+                else
+                    -- ขณะรอคูลดาวน์: อยู่นิ่งๆ ไม่หมุน + สลับความสูง 50, 60, 70 ทุก 1 วินาที
+                    if tick() - lastHeightChange >= 1 then
+                        heightIndex = (heightIndex % #hoverHeights) + 1
+                        currentDynamicHeight = hoverHeights[heightIndex]
+                        lastHeightChange = tick()
+                    end
+
+                    orbitPos = targetPos + Vector3.new(0, currentDynamicHeight, 0)
                 end
 
-                local timeNow = tick()
-                local radius = 20 
-                local speed = 5   
-                local angle = timeNow * speed
-                
-                local offsetX = math.cos(angle) * radius
-                local offsetZ = math.sin(angle) * radius
-                
-                local targetPos = targetHrp.Position
-                local orbitPos = targetPos + Vector3.new(offsetX, currentDynamicHeight, offsetZ)
-                
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
                 -- เช็คถ้าระบบไม่ทำดาเมจหลังเริ่มโจมตี 2.5 วินาที ให้เปลี่ยนเป้าหมาย
@@ -382,7 +394,6 @@ function startFarm()
                         currentTargetModel = nil
                         attackAttemptTime = nil
                         isDiving = false
-                        currentDynamicHeight = 60
                     else
                         attackAttemptTime = nil
                     end
@@ -390,7 +401,6 @@ function startFarm()
 
             else
                 isDiving = false
-                currentDynamicHeight = 60
                 initialTargetHealth = nil
                 attackAttemptTime = nil
                 if tick() - lastFoundMonsterTime > 1.5 then
