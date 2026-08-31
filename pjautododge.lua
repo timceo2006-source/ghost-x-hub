@@ -3,9 +3,14 @@ local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "The Underworld"
 local selectedDifficulty = "Insane"
 
-local ORBIT_RADIUS = 12 -- ระยะห่างรอบตัวมอนสเตอร์
-local HOVER_HEIGHT = 14 -- ความสูงในการลอยตัว
+-- ตั้งค่าฮิตบ็อกซ์
+local HITBOX_RADIUS = 150
+local HITBOX_SIZE = Vector3.new(20, 20, 20)
 
+-- ตั้งค่าการโจมตี (true = ใช้ตีธรรมดาผสมในคอมโบด้วย, false = ใช้แค่สกิลอย่างเดียว)
+local USE_NORMAL_ATTACK = true 
+
+-- ตั้งค่าเปิดใช้งานระบบ
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
@@ -14,12 +19,14 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local TeleportService = game:GetService("TeleportService")
 local CoreGui = game:GetService("CoreGui")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ==================== GUI (มุมขวาบน) ====================
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "SmartOrbitFarm"
+screenGui.Name = "DungeonFarmGui"
 screenGui.ResetOnSpawn = false
 if syn and syn.protect_gui then
     syn.protect_gui(screenGui)
@@ -44,9 +51,9 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Smart Orbit Logic"
+titleLabel.Text = "Dungeon Auto Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 12
+titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
@@ -74,6 +81,34 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleButton
 
+-- ระบบลาก GUI
+local dragging, dragInput, dragStart, startPos
+mainFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+mainFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
 local startFarm, stopFarm
 
 toggleButton.MouseButton1Click:Connect(function()
@@ -95,6 +130,31 @@ toggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
+-- ==================== ระบบหลักของสคริปต์ ====================
+
+task.spawn(function()
+    pcall(function()
+        local errorPrompt = CoreGui:FindFirstChild("RobloxPromptGui", true)
+        if errorPrompt then
+            errorPrompt.DescendantAdded:Connect(function(subChild)
+                if subChild.Name == "ErrorTitle" then
+                    task.wait(2)
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+                end
+            end)
+        end
+    end)
+    
+    while true do
+        task.wait(5)
+        pcall(function()
+            if not LocalPlayer or not LocalPlayer.Parent then
+                TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+            end
+        end)
+    end
+end)
+
 local function pressKey(keyStr)
     local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
     if success and keyCode then
@@ -104,6 +164,36 @@ local function pressKey(keyStr)
             VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
         end)
     end
+end
+
+-- ฟังก์ชันสำหรับสลับตัวละคร (Swap) เมื่อตีไม่เข้าตามเงื่อนไข
+local function trySwapCharacter()
+    pcall(function()
+        local remotes = ReplicatedStorage:FindFirstChild("remotes")
+        if remotes then
+            -- ค้นหารemoteสำหรับสลับตัวละคร (สามารถปรับชื่อตามเกมจริงได้หากมี)
+            for _, v in ipairs(remotes:GetChildren()) do
+                if v:IsA("RemoteEvent") and (v.Name:lower():find("swap") or v.Name:lower():find("character") or v.Name:lower():find("hero")) then
+                    v:FireServer()
+                    return
+                end
+            end
+        end
+        
+        -- Fallback: ลองจำลองการคลิกปุ่ม Swap ในหน้าจอ PlayerGui หากมี
+        local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if playerGui then
+            for _, gui in ipairs(playerGui:GetDescendants()) do
+                if gui:IsA("TextButton") and (gui.Text:lower():find("swap") or gui.Name:lower():find("swap")) then
+                    local absPos = gui.AbsolutePosition
+                    local absSize = gui.AbsoluteSize
+                    VirtualInputManager:SendMouseButtonEvent(absPos.X + absSize.X/2, absPos.Y + absSize.Y/2, 0, true, game, 0)
+                    task.wait(0.05)
+                    VirtualInputManager:SendMouseButtonEvent(absPos.X + absSize.X/2, absPos.Y + absSize.Y/2, 0, false, game, 0)
+                end
+            end
+        end
+    end)
 end
 
 local function tryStartGame()
@@ -127,168 +217,271 @@ end
 
 function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then return end
+
     stopFarm()
 
-    local lastSkillTime = 0
+    local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
+    
+    -- สถานะการทำงาน: "HOVER" (รอคูลดาวน์บนฟ้า), "ATTACK" (ปล่อยสกิลที่ความสูง 25), "TRANSITION" (ลอยนิ่งความสูง 35)
+    local farmState = "HOVER"
+
+    -- ลำดับเป้าหมายอัจฉริยะสำหรับบอสพิเศษ: "BOSS" -> "HEART" -> "MINION"
+    local targetPriorityState = "BOSS"
+    local lastTargetHealth = -1
+    local failDamageCount = 0
+
+    -- ตั้งค่าระดับความสูงช่วงรอคูลดาวน์ (120, 40, 70)
+    local hoverHeights = {120, 40, 70}
+    local heightIndex = 1
+    local lastHeightChange = tick()
+    local currentHoverHeight = hoverHeights[1]
+
+    local function expandNearbyHitboxes(playerHrp)
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+                local modelName = obj.Name
+                if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
+                    local hum = obj:FindFirstChild("Humanoid")
+                    val hrp = obj:FindFirstChild("HumanoidRootPart")
+
+                    if hum and hrp and hum.Health > 0 then
+                        local distance = (hrp.Position - playerHrp.Position).Magnitude
+                        if distance <= HITBOX_RADIUS then
+                            hrp.Size = HITBOX_SIZE
+                            hrp.Transparency = 0.8
+                            hrp.CanCollide = false
+                        end
+                    end
+                end
+            end
+        end
+    end
 
     local function getTarget()
-        local char = LocalPlayer.Character
-        local hrp = char and char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return nil end
+        -- ค้นหาตามลำดับความสำคัญเมื่อตีไม่เข้า (BOSS -> HEART -> MINION)
+        local bossModel, heartModel, minionModel = nil, nil, nil
 
-        local dungeon = workspace:FindFirstChild("dungeon")
-        if not dungeon then return nil end
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+                local modelName = obj.Name
+                if modelName:find("_reyillsPreview") or modelName:find("Preview") then
+                    continue
+                end
 
-        local bestHeart = nil
-        local nearestEnemy = nil
-        local shortestDistance = math.huge
+                local hum = obj:FindFirstChild("Humanoid")
+                local hrp = obj:FindFirstChild("HumanoidRootPart")
 
-        for _, room in ipairs(dungeon:GetChildren()) do
-            if room:IsA("Folder") or room:IsA("Model") then
-                for _, obj in ipairs(room:GetDescendants()) do
-                    if obj:IsA("Model") and obj ~= char then
-                        local hum = obj:FindFirstChild("Humanoid")
-                        local targetHrp = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso") or obj.PrimaryPart
-                        
-                        if hum and targetHrp and hum.Health > 0 then
-                            if not Players:GetPlayerFromCharacter(obj) then
-                                if string.find(string.lower(obj.Name), "heart") then
-                                    bestHeart = targetHrp
-                                else
-                                    local dist = (targetHrp.Position - hrp.Position).Magnitude
-                                    if dist < shortestDistance then
-                                        shortestDistance = dist
-                                        nearestEnemy = targetHrp
-                                    end
-                                end
-                            end
-                        end
+                if hum and hrp and hum.Health > 0 then
+                    local lowerName = modelName:lower()
+                    if lowerName:find("heart") then
+                        heartModel = obj
+                    elseif lowerName:find("minion") then
+                        minionModel = obj
+                    else
+                        bossModel = obj
                     end
                 end
             end
         end
 
-        return bestHeart or nearestEnemy
+        local selectedObj = nil
+        if targetPriorityState == "HEART" and heartModel then
+            selectedObj = heartModel
+        elseif targetPriorityState == "MINION" and minionModel then
+            selectedObj = minionModel
+        else
+            selectedObj = bossModel or heartModel or minionModel
+        end
+
+        if selectedObj then
+            local hum = selectedObj:FindFirstChild("Humanoid")
+            local hrp = selectedObj:FindFirstChild("HumanoidRootPart")
+            if hum and hrp then
+                currentTargetModel = selectedObj
+                lastFoundMonsterTime = tick()
+                return hrp, hum
+            end
+        end
+
+        currentTargetModel = nil
+        return nil, nil
     end
 
-    -- ฟังก์ชันเช็คว่าพิกัดรอบตัวปลอดภัยจากหิน/ฮิตบ็อกซ์ไหม
-    local function isPositionSafe(pos)
-        local dungeon = workspace:FindFirstChild("dungeon")
-        if not dungeon then return true end
+    local function checkSkillsReady()
+        local readyTools = {}
+        local totalSkills = 0
         
-        for _, room in ipairs(dungeon:GetChildren()) do
-            if room:IsA("Folder") or room:IsA("Model") then
-                for _, obj in ipairs(room:GetDescendants()) do
-                    if obj:IsA("BasePart" ) and obj.Transparency < 0.9 then
-                        local nameLower = string.lower(obj.Name)
-                        local color = obj.Color
-                        local isHazard = (color.R > 0.4 and color.G < 0.3 and color.B < 0.3) or 
-                                         string.find(nameLower, "spike") or 
-                                         string.find(nameLower, "rock") or 
-                                         string.find(nameLower, "stone") or 
-                                         string.find(nameLower, "hitbox") or
-                                         string.find(nameLower, "warn")
-                                         
-                        if isHazard then
-                            if (obj.Position - pos).Magnitude < 6 then -- ถ้ารัศมีใกล้ฮิตบ็อกซ์อันตรายเกิน 6 หน่วย ถือว่าไม่ปลอดภัย
-                                return false
-                            end
-                        end
+        local items = {}
+        if LocalPlayer:FindFirstChild("Backpack") then
+            for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
+        end
+        if LocalPlayer.Character then
+            for _, v in ipairs(LocalPlayer.Character:GetChildren()) do table.insert(items, v) end
+        end
+
+        for _, item in ipairs(items) do
+            if item:IsA("Tool") then
+                local slot = item:FindFirstChild("abilitySlot")
+                local cd = item:FindFirstChild("cooldown")
+                if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
+                    totalSkills = totalSkills + 1
+                    if cd.Value <= 0.1 then
+                        table.insert(readyTools, item)
                     end
                 end
             end
         end
-        return true
+
+        local requiredCount = math.min(2, totalSkills)
+        if totalSkills > 0 and #readyTools >= requiredCount then
+            return true, readyTools
+        end
+        return false, {}
     end
 
-    -- ลูปหลัก: สุ่มหาจุดที่ปลอดภัยที่สุดรอบตัวมอนสเตอร์เพื่อเกาะตี
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
         pcall(function()
             local char = LocalPlayer.Character
             if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
-            
+
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
-            
+
             for _, part in ipairs(char:GetDescendants()) do
                 if part:IsA("BasePart") then part.CanCollide = false end
             end
-            
-            hrp.AssemblyLinearVelocity = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-            local targetHrp = getTarget()
-            if targetHrp and targetHrp.Parent then
-                lastFoundMonsterTime = tick()
-                timerLabel.Text = "Status: Safe Orbit Attacking"
-                
-                -- เช็ค 8 มุมรอบตัวมอนสเตอร์ (0 ถึง 360 องศา) เพื่อหาจุดที่ไม่มีหินโผล่
-                local bestPos = nil
-                for angle = 0, math.pi * 2, math.pi / 4 do
-                    local candidatePos = targetHrp.Position + Vector3.new(math.cos(angle) * ORBIT_RADIUS, HOVER_HEIGHT, math.sin(angle) * ORBIT_RADIUS)
-                    if isPositionSafe(candidatePos) then
-                        bestPos = candidatePos
-                        break -- เจอจุดปลอดภัยแรก วาปไปทันที
+            expandNearbyHitboxes(hrp)
+
+            local targetHrp, targetHum = getTarget()
+            if targetHrp and targetHum then
+                -- ตรวจสอบการลดลงของเลือดเป้าหมายเพื่อเช็คว่าตีเข้าหรือไม่
+                if lastTargetHealth == -1 then
+                    lastTargetHealth = targetHum.Health
+                end
+
+                local isReady, readyTools = checkSkillsReady()
+
+                -- เริ่มต้นลำดับการโจมตีเมื่อสกิลพร้อม และอยู่ในสถานะรอคูลดาวน์บนฟ้า
+                if isReady and farmState == "HOVER" then
+                    farmState = "ATTACK"
+
+                    task.spawn(function()
+                        local healthBeforeAttack = targetHum.Health
+
+                        -- Step 1: ปล่อยสกิลครบที่ความสูง 25
+                        for _, item in ipairs(readyTools) do
+                            local slot = item:FindFirstChild("abilitySlot")
+                            local cd = item:FindFirstChild("cooldown")
+
+                            if slot and slot:IsA("ValueBase") then
+                                local keyName = tostring(slot.Value)
+                                local startWait = tick()
+
+                                while cd and cd:IsA("ValueBase") and cd.Value <= 0.2 do
+                                    pressKey(keyName)
+                                    task.wait(0.06)
+
+                                    if (tick() - startWait) > 2.5 then
+                                        break
+                                    end
+                                end
+                                
+                                task.wait(0.15)
+                            end
+                        end
+
+                        -- Step 2: ตีธรรมดาปิดท้าย (ทำงานตามค่า USE_NORMAL_ATTACK)
+                        if USE_NORMAL_ATTACK then
+                            local currentChar = LocalPlayer.Character
+                            if currentChar then
+                                local equippedTool = currentChar:FindFirstChildOfClass("Tool")
+                                if equippedTool then
+                                    equippedTool:Activate()
+                                end
+                            end
+                        end
+
+                        task.wait(0.2)
+
+                        -- ตรวจสอบผลลัพธ์การโจมตี (ถ้าเลือดไม่ลดหลังผ่านรอบสกิล)
+                        task.wait(0.5)
+                        if targetHum and targetHum.Parent then
+                            if math.abs(targetHum.Health - healthBeforeAttack) < 1 then
+                                failDamageCount = failDamageCount + 1
+                                if failDamageCount >= 2 then
+                                    failDamageCount = 0
+                                    if targetPriorityState == "BOSS" then
+                                        targetPriorityState = "HEART" -- เปลี่ยนไปตีหัวใจ
+                                    elseif targetPriorityState == "HEART" then
+                                        targetPriorityState = "MINION" -- เปลี่ยนไปตีมอนธรรมดา
+                                    else
+                                        targetPriorityState = "BOSS"
+                                        trySwapCharacter() -- ถ้าตีไม่เข้าทุกอย่าง ให้สลับตัวละครถัดไป
+                                    end
+                                end
+                            else
+                                failDamageCount = 0 -- ถ้าตีเข้า รีเซ็ตตัวนับ
+                            end
+                        end
+
+                        -- Step 3: วาปขึ้นความสูง 35 เพื่อลอยนิ่งพักจังหวะ 0.35 วินาที
+                        farmState = "TRANSITION"
+                        task.wait(0.35)
+
+                        -- Step 4: วาปขึ้นไปรอคูลดาวน์บนฟ้า
+                        heightIndex = 1
+                        currentHoverHeight = hoverHeights[1]
+                        lastHeightChange = tick()
+                        farmState = "HOVER"
+                    end)
+                end
+
+                -- การคำนวณตำแหน่งพิกัดตาม Logic แต่ละช่วง
+                local targetPos = targetHrp.Position
+                local orbitPos
+
+                if farmState == "ATTACK" then
+                    -- ช่วงโจมตี: หมุนควงรอบตัวมอนสเตอร์ที่ความสูง 25
+                    local timeNow = tick()
+                    local radius = 18 
+                    local speed = 3   
+                    local angle = timeNow * speed
+                    
+                    local offsetX = math.cos(angle) * radius
+                    local offsetZ = math.sin(angle) * radius
+                    orbitPos = targetPos + Vector3.new(offsetX, 25, offsetZ)
+
+                elseif farmState == "TRANSITION" then
+                    -- ช่วงพักจังหวะ: ลอยนิ่งเหนือหัวที่ความสูง 35
+                    orbitPos = targetPos + Vector3.new(0, 35, 0)
+
+                else -- farmState == "HOVER"
+                    -- ช่วงรอคูลดาวน์: ลอยนิ่งเหนือหัว และสลับความสูงระหว่าง 120, 40, 70 ทุกๆ 1 วินาที
+                    if tick() - lastHeightChange >= 1 then
+                        heightIndex = (heightIndex % #hoverHeights) + 1
+                        currentHoverHeight = hoverHeights[heightIndex]
+                        lastHeightChange = tick()
                     end
+
+                    orbitPos = targetPos + Vector3.new(0, currentHoverHeight, 0)
                 end
-                
-                -- ถ้าทุกมุมอันตรายหมด ให้ถอยออกไปตั้งหลักไกลขึ้นชั่วคราว
-                if not bestPos then
-                    bestPos = targetHrp.Position + Vector3.new(0, HOVER_HEIGHT + 15, -ORBIT_RADIUS - 10)
-                end
-                
-                hrp.CFrame = CFrame.lookAt(bestPos, targetHrp.Position)
+
+                hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
+
             else
-                timerLabel.Text = "Status: Searching..."
+                farmState = "HOVER"
+                targetPriorityState = "BOSS"
+                failDamageCount = 0
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
             end
         end)
-    end)
-
-    -- ลูปกดสกิลและโจมตีปกติ
-    task.spawn(function()
-        while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
-            pcall(function()
-                local char = LocalPlayer.Character
-                if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
-                    local targetHrp = getTarget()
-                    if targetHrp then
-                        if tick() - lastSkillTime > 0.15 then
-                            local items = {}
-                            if LocalPlayer:FindFirstChild("Backpack") then
-                                for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
-                            end
-                            for _, v in ipairs(char:GetChildren()) do table.insert(items, v) end
-                            
-                            for _, item in ipairs(items) do
-                                if item:IsA("Tool") then
-                                    local slot = item:FindFirstChild("abilitySlot")
-                                    local cd = item:FindFirstChild("cooldown")
-                                    if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
-                                        if cd.Value <= 0.1 then
-                                            pressKey(tostring(slot.Value))
-                                            lastSkillTime = tick()
-                                            break
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                        
-                        local equippedTool = char:FindFirstChildOfClass("Tool")
-                        if equippedTool then
-                            equippedTool:Activate()
-                        end
-                    end
-                end
-            end)
-            task.wait(0.1)
-        end
     end)
 end
 
@@ -306,7 +499,14 @@ task.spawn(function()
 
                     if createLobbyRemote then
                         timerLabel.Text = "Creating Lobby..."
-                        local args = { selectedMap, selectedDifficulty, 0, false, false, false }
+                        local args = {
+                            selectedMap,
+                            selectedDifficulty,
+                            0,
+                            false,
+                            false,
+                            false
+                        }
                         createLobbyRemote:InvokeServer(unpack(args))
                         task.wait(1.5)
                     end
@@ -315,29 +515,4 @@ task.spawn(function()
                         for i = 5, 1, -1 do
                             if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
                             timerLabel.Text = "Starting in: " .. i .. "s"
-                            task.wait(1)
-                        end
-                        
-                        if getgenv().AutoCreateAndStart and game.PlaceId == TARGET_PLACE_ID then
-                            timerLabel.Text = "Starting Game..."
-                            startDungeonRemote:FireServer()
-                            task.wait(3)
-                        end
-                    end
-                end)
-            else
-                timerLabel.Text = "In Dungeon"
-                if not getgenv().DungeonFarmLoop then
-                    task.defer(startFarm)
-                end
-            end
-        else
-            timerLabel.Text = "Status: OFF"
-        end
-        task.wait(2)
-    end
-end)
-
-if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
-    task.defer(startFarm)
-end
+        
