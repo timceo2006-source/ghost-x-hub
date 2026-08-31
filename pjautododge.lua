@@ -46,9 +46,9 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Dynamic Rooms"
+titleLabel.Text = "Smart Target & Heart Priority"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 13
+titleLabel.TextSize = 12
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
@@ -131,40 +131,42 @@ function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then return end
     stopFarm()
 
-    local currentTarget = nil
     local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
 
-    -- ฟังก์ชันหามอนสเตอร์แบบไดนามิก: วนลูปทุกห้องใน workspace.dungeon โดยอัตโนมัติ
+    -- ฟังก์ชันคัดเลือกเป้าหมายอัจฉริยะ: เช็คหาหัวใจก่อนเสมอ -> ถ้าไม่มีค่อยหาตัวที่ใกล้ที่สุด
     local function getTarget()
-        -- ถ้าเป้าหมายเดิมยังอยู่และยังมีชีวิตอยู่ ให้ล็อกเป้าเดิมไว้ก่อน
-        if currentTarget and currentTarget.Parent then
-            local hum = currentTarget:FindFirstChild("Humanoid")
-            local hrp = currentTarget:FindFirstChild("HumanoidRootPart") or currentTarget:FindFirstChild("Torso")
-            if hum and hrp and hum.Health > 0 then
-                return hrp
-            end
-        end
-        
-        currentTarget = nil
+        local char = LocalPlayer.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if not hrp then return nil end
+
         local dungeon = workspace:FindFirstChild("dungeon")
-        if dungeon then
-            -- วนลูปทุกๆ ลูก (ห้อง) ที่อยู่ในโฟลเดอร์ dungeon (ไม่ว่าจะเป็น room1, room4, bossRoom ฯลฯ)
-            for _, room in ipairs(dungeon:GetChildren()) do
-                if room:IsA("Folder") or room:IsA("Model") then
-                    -- ค้นหาทุกโมเดลหรือศัตรูที่อยู่ภายในห้องนั้นๆ
-                    for _, obj in ipairs(room:GetDescendants()) do
-                        if obj:IsA("Model") and obj ~= LocalPlayer.Character then
-                            local hum = obj:FindFirstChild("Humanoid")
-                            local hrp = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso") or obj.PrimaryPart
-                            if hum and hrp and hum.Health > 0 then
-                                -- กรองไม่ให้จับผู้เล่นด้วยกันเอง
-                                if not Players:GetPlayerFromCharacter(obj) then
-                                    currentTarget = obj
-                                    hrp.Size = Vector3.new(25, 25, 25)
-                                    hrp.Transparency = 0.8 
-                                    hrp.CanCollide = false
-                                    return hrp
+        if not dungeon then return nil end
+
+        local bestHeart = nil
+        local nearestEnemy = nil
+        local shortestDistance = math.huge
+
+        -- วนลูปทุกห้องใน dungeon เพื่อหาเป้าหมายทั้งหมด
+        for _, room in ipairs(dungeon:GetChildren()) do
+            if room:IsA("Folder") or room:IsA("Model") then
+                for _, obj in ipairs(room:GetDescendants()) do
+                    if obj:IsA("Model") and obj ~= char then
+                        local hum = obj:FindFirstChild("Humanoid")
+                        local targetHrp = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Torso") or obj.PrimaryPart
+                        
+                        if hum and targetHrp and hum.Health > 0 then
+                            if not Players:GetPlayerFromCharacter(obj) then
+                                -- เช็คว่าเป็น "หัวใจบอส" หรือไม่ (มีคำว่า Heart ในชื่อ)
+                                if string.find(string.lower(obj.Name), "heart") then
+                                    bestHeart = targetHrp
+                                else
+                                    -- คำนวณหาระยะทางเพื่อหาตัวที่อยู่ใกล้ที่สุด
+                                    local dist = (targetHrp.Position - hrp.Position).Magnitude
+                                    if dist < shortestDistance then
+                                        shortestDistance = dist
+                                        nearestEnemy = targetHrp
+                                    end
                                 end
                             end
                         end
@@ -172,10 +174,27 @@ function startFarm()
                 end
             end
         end
+
+        -- ถ้าระบบเจอหัวใจบอส ให้สลับไปตีหัวใจทันทีเป็นอันดับแรกสุด
+        if bestHeart then
+            bestHeart.Size = Vector3.new(25, 25, 25)
+            bestHeart.Transparency = 0.8
+            bestHeart.CanCollide = false
+            return bestHeart
+        end
+
+        -- ถ้าไม่มีหัวใจ ให้เลือกตัวที่อยู่ใกล้ที่สุด
+        if nearestEnemy then
+            nearestEnemy.Size = Vector3.new(25, 25, 25)
+            nearestEnemy.Transparency = 0.8
+            nearestEnemy.CanCollide = false
+            return nearestEnemy
+        end
+
         return nil
     end
 
-    -- ลูปหลัก: ลอยตัวนิ่งๆ บนหัวบอส/มอนสเตอร์แบบเสถียร
+    -- ลูปหลัก: ลอยตัวนิ่งๆ บนหัวเป้าหมายที่เลือก
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
