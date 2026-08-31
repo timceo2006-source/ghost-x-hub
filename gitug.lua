@@ -1,11 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "Winter Outpost"
-local selectedDifficulty = ""
-
--- ตั้งค่าสถานะเริ่มต้นตามที่ขอ (ฟาร์มเปิดอยู่, ออโต้เข้าห้องปิดอยู่)
-getgenv().AutoCreateAndStart = false
-getgenv().AutoFarmEnabled = true
+getgenv().AutoFarmEnabled = false
+getgenv().BossDetectorEnabled = false -- ปิดการตรวจจับแบบอัตโนมัติไว้ รอให้กดเปิดหรือรีเฟรช
 getgenv().DungeonFarmLoop = nil
 
 local Players = game:GetService("Players")
@@ -14,103 +10,165 @@ local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local TeleportService = game:GetService("TeleportService")
 local CoreGui = game:GetService("CoreGui")
-local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== สร้าง GUI ปุ่มเปิด-ปิด (แบบลากได้) ====================
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DungeonFarmGui"
-screenGui.ResetOnSpawn = false
-if syn and syn.protect_gui then
-    syn.protect_gui(screenGui)
-    screenGui.Parent = CoreGui
-elseif gethui then
-    screenGui.Parent = gethui()
-else
-    screenGui.Parent = CoreGui
+-- สร้าง GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "DungeonAutoFarmGUI"
+ScreenGui.ResetOnSpawn = false
+
+if CoreGui:FindFirstChild("DungeonAutoFarmGUI") then
+    CoreGui.DungeonAutoFarmGUI:Destroy()
 end
 
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 180, 0, 90)
-mainFrame.Position = UDim2.new(0.05, 0, 0.1, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-mainFrame.BorderSizePixel = 0
-mainFrame.Parent = screenGui
+if syn and syn.protect_gui then
+    syn.protect_gui(ScreenGui)
+    ScreenGui.Parent = CoreGui
+elseif gethui then
+    ScreenGui.Parent = gethui()
+else
+    ScreenGui.Parent = CoreGui
+end
 
-local uiCorner = Instance.new("UICorner")
-uiCorner.CornerRadius = UDim.new(0, 8)
-uiCorner.Parent = mainFrame
+local MainFrame = Instance.new("Frame")
+MainFrame.Parent = ScreenGui
+MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+MainFrame.BorderSizePixel = 0
+MainFrame.Position = UDim2.new(0.05, 0, 0.15, 0)
+MainFrame.Size = UDim2.new(0, 320, 0, 310) -- ขยายกล่องให้พอดีกับ 3 ปุ่ม
+MainFrame.Active = true
+MainFrame.Draggable = true
 
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0, 30)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm"
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 13
-titleLabel.Font = Enum.Font.SourceSansBold
-titleLabel.Parent = mainFrame
+local Title = Instance.new("TextLabel")
+Title.Parent = MainFrame
+Title.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Title.BorderSizePixel = 0
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.Font = Enum.Font.SourceSansBold
+Title.Text = "Dungeon Auto Farm & Skill Detector"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 15
 
-local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(0.9, 0, 0, 45)
-toggleButton.Position = UDim2.new(0.05, 0, 0.35, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.TextSize = 14
-toggleButton.Font = Enum.Font.SourceSansBold
-toggleButton.Text = "Status: ON"
-toggleButton.Parent = mainFrame
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Parent = ScreenGui
+ToggleButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Position = UDim2.new(0, 10, 0.5, -20)
+ToggleButton.Size = UDim2.new(0, 70, 0, 30)
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.Text = "UI: ON"
+ToggleButton.TextColor3 = Color3.fromRGB(0, 255, 0)
+ToggleButton.TextSize = 14
 
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(0, 6)
-btnCorner.Parent = toggleButton
+ToggleButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+    ToggleButton.Text = MainFrame.Visible and "UI: ON" or "UI: OFF"
+    ToggleButton.TextColor3 = MainFrame.Visible and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+end)
 
--- ระบบลาก GUI
-local dragging, dragInput, dragStart, startPos
-mainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
+local InfoBox = Instance.new("TextLabel")
+InfoBox.Parent = MainFrame
+InfoBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+InfoBox.BorderSizePixel = 0
+InfoBox.Position = UDim2.new(0.05, 0, 0.12, 0)
+InfoBox.Size = UDim2.new(0.9, 0, 0, 85)
+InfoBox.Font = Enum.Font.Code
+InfoBox.Text = "สถานะ: พร้อมใช้งาน\n(กดปุ่มรีเฟรชหรือเปิดสแกนเพื่อค้นหาสกิล)"
+InfoBox.TextColor3 = Color3.fromRGB(100, 255, 100)
+InfoBox.TextSize = 11
+InfoBox.TextWrapped = true
+InfoBox.TextXAlignment = Enum.TextXAlignment.Left
+InfoBox.TextYAlignment = Enum.TextYAlignment.Top
+
+-- ปุ่มที่ 1: เปิด/ปิด ออโต้ฟาร์มดันเจี้ยน
+local AutoFarmBtn = Instance.new("TextButton")
+AutoFarmBtn.Parent = MainFrame
+AutoFarmBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+AutoFarmBtn.BorderSizePixel = 0
+AutoFarmBtn.Position = UDim2.new(0.05, 0, 0.42, 0)
+AutoFarmBtn.Size = UDim2.new(0.9, 0, 0, 38)
+AutoFarmBtn.Font = Enum.Font.SourceSansBold
+AutoFarmBtn.Text = "ออโต้ฟาร์มดันเจี้ยน: ปิดอยู่"
+AutoFarmBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+AutoFarmBtn.TextSize = 13
+
+-- ปุ่มที่ 2: เปิด/ปิด ตัวตรวจจับสกิลบอส
+local DetectorBtn = Instance.new("TextButton")
+DetectorBtn.Parent = MainFrame
+DetectorBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+DetectorBtn.BorderSizePixel = 0
+DetectorBtn.Position = UDim2.new(0.05, 0, 0.58, 0)
+DetectorBtn.Size = UDim2.new(0.9, 0, 0, 38)
+DetectorBtn.Font = Enum.Font.SourceSansBold
+DetectorBtn.Text = "ตรวจหาสกิลบอสใกล้ตัว: ปิดอยู่"
+DetectorBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+DetectorBtn.TextSize = 13
+
+-- ปุ่มที่ 3: ปุ่มรีเฟรชข้อมูล (กดสแกนหาครั้งเดียวทันที)
+local RefreshBtn = Instance.new("TextButton")
+RefreshBtn.Parent = MainFrame
+RefreshBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+RefreshBtn.BorderSizePixel = 0
+RefreshBtn.Position = UDim2.new(0.05, 0, 0.74, 0)
+RefreshBtn.Size = UDim2.new(0.9, 0, 0, 42)
+RefreshBtn.Font = Enum.Font.SourceSansBold
+RefreshBtn.Text = "🔄 รีเฟรช / สแกนหาสกิลตอนนี้"
+RefreshBtn.TextColor3 = Color3.fromRGB(255, 255, 0)
+RefreshBtn.TextSize = 13
+
+-- ฟังก์ชันสแกนหาสกิลรอบตัว
+local function scanForSkills()
+    local char = LocalPlayer.Character
+    if not char then 
+        InfoBox.Text = "❌ ไม่พบตัวละครของคุณ!"
+        return 
+    end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then 
+        InfoBox.Text = "❌ ไม่พบ HumanoidRootPart!"
+        return 
+    end
+
+    local detectedSkills = {}
+    local scanFolders = {workspace, workspace:FindFirstChild("dungeon")}
+
+    for _, folder in ipairs(scanFolders) do
+        if folder then
+            for _, obj in ipairs(folder:GetDescendants()) do
+                local nameLower = obj.Name:lower()
+                if nameLower:find("shot") or nameLower:find("skill") or nameLower:find("boss") or nameLower:find("attack") or nameLower:find("laser") or nameLower:find("magic") then
+                    if obj:IsA("BasePart") then
+                        local dist = (obj.Position - hrp.Position).Magnitude
+                        if dist <= 50 then
+                            table.insert(detectedSkills, string.format("- %s (ระยะ: %.1fม.)", obj.Name, dist))
+                        end
+                    elseif obj:IsA("Model") then
+                        local part = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                        if part then
+                            local dist = (part.Position - hrp.Position).Magnitude
+                            if dist <= 50 then
+                                table.insert(detectedSkills, string.format("- [โมเดล] %s (ระยะ: %.1fม.)", obj.Name, dist))
+                            end
+                        end
+                    end
+                end
             end
-        end)
+        end
     end
-end)
 
-mainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
--- ฟังก์ชันกดปุ่มเปิด/ปิดสคริปต์หลัก
-toggleButton.MouseButton1Click:Connect(function()
-    getgenv().AutoFarmEnabled = not getgenv().AutoFarmEnabled
-    getgenv().AutoCreateAndStart = getgenv().AutoFarmEnabled -- เปิด/ปิดไปพร้อมกัน หรือจะแยกก็ได้
-    
-    if getgenv().AutoFarmEnabled then
-        toggleButton.Text = "Status: ON"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
-        task.defer(startFarm)
+    if #detectedSkills > 0 then
+        InfoBox.Text = "🚨 ผลสแกนสกิล/บอสใกล้ตัว:\n" .. table.concat(detectedSkills, "\n")
     else
-        toggleButton.Text = "Status: OFF"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(205, 50, 50)
-        stopFarm()
+        InfoBox.Text = "✅ ปลอดภัย: ไม่พบสกิลรอบตัวในรัศมี 50 เมตร"
     end
+end
+
+-- ปุ่มรีเฟรช กดปุ่มนี้เพื่อสแกนทันที
+RefreshBtn.MouseButton1Click:Connect(function()
+    scanForSkills()
 end)
 
--- ==================== ระบบหลักของสคริปต์ ====================
-
--- ระบบตรวจจับการโดนเตะหรือหลุดออกจากเกมเพื่อรีจอยอัตโนมัติ
+-- ระบบตรวจจับการโดนเตะเพื่อรีจอยอัตโนมัติ
 task.spawn(function()
     pcall(function()
         local errorPrompt = CoreGui:FindFirstChild("RobloxPromptGui", true)
@@ -118,7 +176,6 @@ task.spawn(function()
             errorPrompt.DescendantAdded:Connect(function(subChild)
                 if subChild.Name == "ErrorTitle" then
                     task.wait(2)
-                    print("[Auto Reconnect] ตรวจพบการถูกเตะหรือหลุดจากเกม กำลังรีจอย...")
                     TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
                 end
             end)
@@ -146,36 +203,31 @@ local function pressKey(keyStr)
     end
 end
 
-local function tryStartGame()
-    pcall(function()
-        local remotes = ReplicatedStorage:FindFirstChild("remotes")
-        if remotes then
-            local changeStartValue = remotes:FindFirstChild("changeStartValue")
-            if changeStartValue and changeStartValue:IsA("RemoteEvent") then
-                changeStartValue:FireServer()
-            end
+-- ลูปตรวจหาสกิลแบบ Real-time (ทำงานเฉพาะตอนกดเปิดสวิตช์ปุ่มที่ 2)
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if getgenv().BossDetectorEnabled then
+            pcall(function()
+                scanForSkills()
+            end)
         end
-    end)
-end
+    end
+end)
 
-function stopFarm()
+local function stopFarm()
     if getgenv().DungeonFarmLoop then
         getgenv().DungeonFarmLoop:Disconnect()
         getgenv().DungeonFarmLoop = nil
     end
 end
 
-function startFarm()
-    if game.PlaceId == TARGET_PLACE_ID then
-        warn("[AutoFarm] ไม่สามารถใช้งานระบบฟาร์มในห้อง Lobby ได้!")
-        return
-    end
-
+local function startFarm()
+    if game.PlaceId == TARGET_PLACE_ID then return end
     stopFarm()
 
     local currentTarget = nil
     local lastSkillTime = 0
-    local lastFoundMonsterTime = tick()
     local isDodgingBoss = false
 
     local function getTarget()
@@ -183,10 +235,7 @@ function startFarm()
             local hum = currentTarget:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
                 local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    lastFoundMonsterTime = tick()
-                    return hrp
-                end
+                if hrp then return hrp end
             end
         end
 
@@ -203,7 +252,6 @@ function startFarm()
                     hrp.Size = Vector3.new(25, 25, 25)
                     hrp.Transparency = 0.8
                     hrp.CanCollide = false
-                    lastFoundMonsterTime = tick()
                     return hrp
                 end
             end
@@ -228,8 +276,8 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 18
-                if workspace:FindFirstChild("bossShot") then
+                local safeHeight = 30
+                if workspace:FindFirstChild("bossShot") or workspace:FindFirstChild("bossSkill") then
                     safeHeight = 50
                     isDodgingBoss = true
                 else
@@ -239,9 +287,6 @@ function startFarm()
                 hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
             else
                 isDodgingBoss = false
-                if tick() - lastFoundMonsterTime > 1.5 then
-                    tryStartGame()
-                end
             end
         end)
     end)
@@ -288,43 +333,29 @@ function startFarm()
     end)
 end
 
--- ระบบวนลูปสร้างและเข้าดันเจี้ยนอัตโนมัติเมื่ออยู่ Lobby
-task.spawn(function()
-    while true do
-        if getgenv().AutoCreateAndStart then
-            pcall(function()
-                if game.PlaceId ~= TARGET_PLACE_ID then return end
-
-                local remotes = ReplicatedStorage:WaitForChild("remotes", 5)
-                if not remotes then return end
-
-                local createLobbyRemote = remotes:FindFirstChild("createLobby")
-                local startDungeonRemote = remotes:FindFirstChild("startDungeon")
-
-                if createLobbyRemote then
-                    local args = {
-                        selectedMap,
-                        selectedDifficulty,
-                        0,
-                        false,
-                        false,
-                        false
-                    }
-                    createLobbyRemote:InvokeServer(unpack(args))
-                    task.wait(1)
-                end
-
-                if startDungeonRemote then
-                    startDungeonRemote:FireServer()
-                    task.wait(1)
-                end
-            end)
-        end
-        task.wait(2)
+-- ปุ่มที่ 1: เปิด/ปิด ออโต้ฟาร์ม
+AutoFarmBtn.MouseButton1Click:Connect(function()
+    getgenv().AutoFarmEnabled = not getgenv().AutoFarmEnabled
+    if getgenv().AutoFarmEnabled then
+        AutoFarmBtn.Text = "ออโต้ฟาร์มดันเจี้ยน: เปิดอยู่"
+        AutoFarmBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
+        startFarm()
+    else
+        AutoFarmBtn.Text = "ออโต้ฟาร์มดันเจี้ยน: ปิดอยู่"
+        AutoFarmBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+        stopFarm()
     end
 end)
 
--- เริ่มต้นระบบฟาร์มทันทีหากอยู่ในดันเจี้ยน (ทำงานตั้งแต่รันสคริปต์)
-if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
-    task.defer(startFarm)
-end
+-- ปุ่มที่ 2: เปิด/ปิด ระบบตรวจหาสกิลบอสแบบต่อเนื่อง
+DetectorBtn.MouseButton1Click:Connect(function()
+    getgenv().BossDetectorEnabled = not getgenv().BossDetectorEnabled
+    if getgenv().BossDetectorEnabled then
+        DetectorBtn.Text = "ตรวจหาสกิลบอสใกล้ตัว: เปิดอยู่"
+        DetectorBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
+    else
+        DetectorBtn.Text = "ตรวจหาสกิลบอสใกล้ตัว: ปิดอยู่"
+        DetectorBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+        InfoBox.Text = "สถานะ: ปิดระบบตรวจหาสกิลแบบต่อเนื่องแล้ว"
+    end
+end)
