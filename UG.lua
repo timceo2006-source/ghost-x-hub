@@ -191,12 +191,6 @@ function startFarm()
     local lastFoundMonsterTime = tick()
     local isExecutingCombo = false
 
-    -- ความสูงสำหรับลอยนิ่งช่วงรอคูลดาวน์
-    local hoverHeights = {50, 60, 70}
-    local heightIndex = 1
-    local lastHeightChange = tick()
-    local currentDynamicHeight = hoverHeights[1]
-
     local function expandNearbyHitboxes(playerHrp)
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
@@ -279,7 +273,6 @@ function startFarm()
             end
         end
 
-        -- ต้องคูลดาวน์พร้อมใช้งานครบทั้ง 2 สกิล
         local requiredCount = math.min(2, totalSkills)
         if totalSkills > 0 and #readyTools >= requiredCount then
             return true, readyTools
@@ -308,16 +301,12 @@ function startFarm()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                -- เริ่มคอมโบปล่อยสกิลเมื่อสกิลพร้อมครบทั้งคู่
+                -- เริ่มกดปล่อยสกิลเมื่อสกิลพร้อมครบทั้ง 2 อัน
                 if isReady and not isExecutingCombo then
                     isExecutingCombo = true
 
                     task.spawn(function()
-                        -- 1. ลงมาความสูงระดับโจมตี
-                        currentDynamicHeight = 20
-                        task.wait(0.12)
-
-                        -- 2. วนปล่อยทีละสกิล: กดย้ำๆ จนกว่าจะมั่นใจว่าสกิลนั้นกดติดจริง (คูลดาวน์เริ่มนับ > 0.2)
+                        -- 1. วนปล่อยทีละสกิล: กดย้ำๆ จนกว่าคูลดาวน์จะเริ่มนับ (> 0.2)
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
@@ -326,22 +315,20 @@ function startFarm()
                                 local keyName = tostring(slot.Value)
                                 local startWait = tick()
 
-                                -- ลูปกดย้ำปุ่มไปเรื่อยๆ จนกว่าคูลดาวน์จะเริ่มนับถอยหลังจริง
                                 while cd and cd:IsA("ValueBase") and cd.Value <= 0.2 do
                                     pressKey(keyName)
-                                    task.wait(0.06) -- กดย้ำถี่ขึ้นเพื่อดักจับจังหวะว่างของตัวละคร
+                                    task.wait(0.06)
 
-                                    -- ระบบป้องกันลูปค้าง (หากติดมึน/สตัดเกิน 2.5 วินาที ให้ข้ามไปสกิลถัดไป)
                                     if (tick() - startWait) > 2.5 then
                                         break
                                     end
                                 end
                                 
-                                task.wait(0.15) -- เว้นช่วงให้แอนิเมชันสกิลแสดงผลเรียบร้อย
+                                task.wait(0.15)
                             end
                         end
 
-                        -- 3. ตีธรรมดาปิดท้าย
+                        -- 2. ตีธรรมดาเสริม
                         local currentChar = LocalPlayer.Character
                         if currentChar then
                             local equippedTool = currentChar:FindFirstChildOfClass("Tool")
@@ -350,37 +337,21 @@ function startFarm()
                             end
                         end
 
-                        -- 4. ค้างต่อเล็กน้อยให้วิถีกระสุน/เอฟเฟกต์ปล่อยออกพ้นตัว
                         task.wait(0.25)
-
-                        -- 5. สกิลกดสำเร็จครบเรียบร้อย ปลดล็อกให้สคริปต์พากลับขึ้นที่สูง
                         isExecutingCombo = false
                     end)
                 end
 
+                -- ลอยนิ่งควงรอบมอนสเตอร์ที่ระดับความสูง 20 ตลอดเวลา (ไม่บินขึ้นฟ้าแล้ว)
                 local targetPos = targetHrp.Position
-                local orbitPos
-
-                if isExecutingCombo then
-                    -- ขณะปล่อยสกิล: ควงรอบตัวมอนสเตอร์ที่ระดับความสูง 20
-                    local timeNow = tick()
-                    local radius = 18 
-                    local speed = 4   
-                    local angle = timeNow * speed
-                    
-                    local offsetX = math.cos(angle) * radius
-                    local offsetZ = math.sin(angle) * radius
-                    orbitPos = targetPos + Vector3.new(offsetX, 20, offsetZ)
-                else
-                    -- ขณะรอคูลดาวน์: ลอยนิ่ง และสลับความสูง 50, 60, 70 ทุก 1 วินาที
-                    if tick() - lastHeightChange >= 1 then
-                        heightIndex = (heightIndex % #hoverHeights) + 1
-                        currentDynamicHeight = hoverHeights[heightIndex]
-                        lastHeightChange = tick()
-                    end
-
-                    orbitPos = targetPos + Vector3.new(0, currentDynamicHeight, 0)
-                end
+                local timeNow = tick()
+                local radius = 18 
+                local speed = 4   
+                local angle = timeNow * speed
+                
+                local offsetX = math.cos(angle) * radius
+                local offsetZ = math.sin(angle) * radius
+                local orbitPos = targetPos + Vector3.new(offsetX, 20, offsetZ)
 
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
