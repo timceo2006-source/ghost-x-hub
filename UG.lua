@@ -3,7 +3,7 @@ local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "King's Castle"
 local selectedDifficulty = "Nightmare"
 
--- ตั้งค่าฮิตบ็อกซ์ (ปรับขนาดลงเพื่อให้สกิลและอาวุธฟันโดนแม่นยำขึ้น)
+-- ตั้งค่าฮิตบ็อกซ์
 local HITBOX_RADIUS = 150 -- ระยะขยายฮิตบ็อกซ์รอบตัวผู้เล่น (Studs)
 local HITBOX_SIZE = Vector3.new(20, 20, 20) -- ขนาดฮิตบ็อกซ์ที่เหมาะสม
 
@@ -194,7 +194,7 @@ function startFarm()
     local isDiving = false
     local ignoredMonsters = {}
 
-    -- ตั้งค่าระดับความสูงสำหรับช่วงรอคูลดาวน์
+    -- ระดับความสูงช่วงรอคูลดาวน์
     local hoverHeights = {50, 60, 70}
     local heightIndex = 1
     local lastHeightChange = tick()
@@ -325,22 +325,33 @@ function startFarm()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                -- เริ่มต้นดิ่งลงไปใช้สกิลเมื่อคูลดาวน์พร้อม
                 if isReady and not isDiving then
                     isDiving = true
                     attackAttemptTime = tick()
                     initialTargetHealth = targetHum.Health
 
                     task.spawn(function()
-                        -- STEP 1: ดิ่งลงไปหมุนปล่อยสกิลที่ความสูง 20
+                        -- STEP 1: ดิ่งลงมาที่ความสูง 20
                         currentDynamicHeight = 20
-                        task.wait(0.12)
+                        task.wait(0.15) -- รอให้ลงมาถึงระยะก่อน
                         
+                        -- กดใช้งานสกิล
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
+                            local cd = item:FindFirstChild("cooldown")
+
                             if slot and slot:IsA("ValueBase") then
                                 pressKey(tostring(slot.Value))
-                                task.wait(0.08)
+                                
+                                -- เช็คจนกว่าค่าคูลดาวน์จะเริ่มนับ (> 0) เพื่อยืนยันว่าสกิลยิงออกไปแล้วจริงๆ
+                                if cd and cd:IsA("ValueBase") then
+                                    local startWait = tick()
+                                    repeat
+                                        task.wait(0.02)
+                                    until cd.Value > 0 or (tick() - startWait) > 0.45
+                                else
+                                    task.wait(0.1)
+                                end
                             end
                         end
                         
@@ -352,11 +363,14 @@ function startFarm()
                             end
                         end
 
-                        -- STEP 2: ขึ้นมารอ 0.3 วินาที ที่ความสูง 30
-                        currentDynamicHeight = 30
-                        task.wait(0.3)
+                        -- ค้างอยู่ที่ความสูง 20 ต่ออีกเล็กน้อย เพื่อให้แอนิเมชัน/ลูกพลังพุ่งออกไปเต็มที่
+                        task.wait(0.35)
 
-                        -- STEP 3: จบการดิ่ง กลับขึ้นไปลอยนิ่งรอคูลดาวน์
+                        -- STEP 2: ค่อยๆ ถอยขึ้นไปความสูง 30
+                        currentDynamicHeight = 30
+                        task.wait(0.2)
+
+                        -- STEP 3: กลับขึ้นไปลอยนิ่งรอคูลดาวน์รอบถัดไป
                         isDiving = false
                     end)
                 end
@@ -365,7 +379,7 @@ function startFarm()
                 local orbitPos
 
                 if isDiving then
-                    -- ขณะปล่อยสกิล: หมุนรอบตัวมอนสเตอร์
+                    -- ขณะดิ่งปล่อยสกิล: หมุนควงรอบตัวมอนสเตอร์
                     local timeNow = tick()
                     local radius = 20 
                     local speed = 5   
@@ -375,7 +389,7 @@ function startFarm()
                     local offsetZ = math.sin(angle) * radius
                     orbitPos = targetPos + Vector3.new(offsetX, currentDynamicHeight, offsetZ)
                 else
-                    -- ขณะรอคูลดาวน์: อยู่นิ่งๆ ไม่หมุน + สลับความสูง 50, 60, 70 ทุก 1 วินาที
+                    -- ขณะรอคูลดาวน์: ลอยนิ่ง และสลับความสูง 50, 60, 70 ทุก 1 วินาที
                     if tick() - lastHeightChange >= 1 then
                         heightIndex = (heightIndex % #hoverHeights) + 1
                         currentDynamicHeight = hoverHeights[heightIndex]
