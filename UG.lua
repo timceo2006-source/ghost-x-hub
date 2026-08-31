@@ -44,9 +44,9 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm"
+titleLabel.Text = "Dungeon Auto Farm (Advanced)"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 13
+titleLabel.TextSize = 12
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
@@ -187,6 +187,11 @@ function startFarm()
     local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
     local isDodgingBoss = false
+    
+    -- ตัวแปรควบคุมคอมโบรูปแบบการเคลื่อนที่และการใช้สกิล
+    local comboPhase = 1 -- 1 = ล็อคใต้ตัว/ยิงชุดบน, 2 = หมุนวนรอบตัวมอนสเตอร์
+    local phaseStartTime = tick()
+    local orbitAngle = 0
 
     local function getTarget()
         if currentTarget and currentTarget.Parent then
@@ -204,7 +209,6 @@ function startFarm()
         
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                -- 🛑 ระบบ Blacklist ป้องกันไม่ให้ล็อคพวกพรีวิว ตัวละครผู้เล่น หรือของแต่งที่ไม่ใช่มอนสเตอร์
                 local modelName = obj.Name
                 if modelName:find("_reyillsPreview") or modelName:find("Preview") then
                     continue
@@ -214,7 +218,6 @@ function startFarm()
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                 if hum and hrp and hum.Health > 0 then
-                    -- เช็คเพิ่มเติมว่ามี Head หรือลักษณะคล้ายมอนสเตอร์จริง
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
                         currentTarget = obj
                         hrp.Size = Vector3.new(40, 40, 40)
@@ -246,15 +249,38 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 20
+                -- เช็คบอสด้านบนเพื่อหลบ
                 if workspace:FindFirstChild("bossShot") then
-                    safeHeight = 50
                     isDodgingBoss = true
                 else
                     isDodgingBoss = false
                 end
-                local safePos = targetHrp.Position + Vector3.new(0, safeHeight, 0)
-                hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
+
+                -- สลับ Phase ทุกๆ 4 วินาที หรือเมื่อครบเงื่อนไขคอมโบสกิล
+                if tick() - phaseStartTime > 4.5 then
+                    comboPhase = (comboPhase == 1) and 2 or 1
+                    phaseStartTime = tick()
+                end
+
+                if isDodgingBoss then
+                    -- บินหลบสูง
+                    local safePos = targetHrp.Position + Vector3.new(0, 50, 0)
+                    hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
+                elseif comboPhase == 1 then
+                    -- Phase 1: ล็อคตำแหน่งด้านใต้ตัวมอนสเตอร์ (ระยะปลอดภัยด้านล่าง)
+                    local safeHeight = 15
+                    local safePos = targetHrp.Position + Vector3.new(0, safeHeight, 0)
+                    hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
+                else
+                    -- Phase 2: หมุนวนรอบตัวมอนสเตอร์ (Circle Orbit) พร้อมหันหน้าเข้าหามอนสเตอร์ตลอดเวลา
+                    orbitAngle = orbitAngle + (RunService.Heartbeat:Wait() * 3) -- ความเร็วในการหมุน
+                    local radius = 18 -- รัศมีวงกลมรอบมอนสเตอร์
+                    local offsetX = math.cos(orbitAngle) * radius
+                    local offsetZ = math.sin(orbitAngle) * radius
+                    
+                    local orbitPos = targetHrp.Position + Vector3.new(offsetX, 5, offsetZ)
+                    hrp.CFrame = CFrame.lookAt(orbitPos, targetHrp.Position)
+                end
             else
                 isDodgingBoss = false
                 if tick() - lastFoundMonsterTime > 1.5 then
@@ -264,6 +290,7 @@ function startFarm()
         end)
     end)
 
+    -- ระบบจัดการการใช้สกิลตามคอมโบ (เช่น Q, E สลับชุด)
     task.spawn(function()
         while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             task.wait(0.05)
@@ -287,6 +314,7 @@ function startFarm()
                             local cd = item:FindFirstChild("cooldown")
                             if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                                 if cd.Value <= 0.1 then
+                                    -- กดสกิลตามจังหวะ slot
                                     pressKey(tostring(slot.Value))
                                     lastSkillTime = tick()
                                     return
