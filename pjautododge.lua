@@ -4,7 +4,7 @@ local selectedMap = "The Underworld"
 local selectedDifficulty = "Insane"
 
 local USE_NORMAL_ATTACK = true 
-local HOVER_HEIGHT = 25
+local HOVER_HEIGHT = 30 -- ความสูงในการลอยตัวเหนือเป้าหมายเพื่อเลี่ยงฮิตบ็อกซ์พื้นดิน
 
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
@@ -14,9 +14,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
-local TeleportService = game:GetService("TeleportService")
 local CoreGui = game:GetService("CoreGui")
-local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ==================== GUI (มุมขวาบน) ====================
@@ -46,7 +44,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Ultimate Dungeon Farm"
+titleLabel.Text = "MaxHub Logic Simulation"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 12
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -134,9 +132,9 @@ function startFarm()
     local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
     local lastDodgeTime = 0
-    local dodgeDuration = 1.2 -- หน่วงเวลาอยู่บนฟ้าหลบสกิลรัวๆ
+    local dodgeDuration = 1.8 -- เวลาหนีภัยนานขึ้นเพื่อให้พ้นรัศมีสกิลคอมโบ
 
-    -- ระบบตรวจสอบและหลบวงแดง/สกิลอันตราย
+    -- ระบบจำลอง Auto Dodge แบบ MaxHub: ตรวจจับวัตถุอันตรายและฮิตบ็อกซ์รอบตัวแบบไดนามิก
     local function getSafeEscapePosition(hrpPos)
         local dungeon = workspace:FindFirstChild("dungeon")
         if not dungeon then return nil, false end
@@ -148,21 +146,30 @@ function startFarm()
             if room:IsA("Folder") or room:IsA("Model") then
                 for _, obj in ipairs(room:GetDescendants()) do
                     if obj:IsA("BasePart") then
+                        local nameLower = string.lower(obj.Name)
                         local color = obj.Color
-                        local isRed = (color.R > 0.5 and color.G < 0.2 and color.B < 0.2) or 
-                                      string.find(string.lower(obj.Name), "warn") or 
-                                      string.find(string.lower(obj.Name), "zone") or
-                                      string.find(string.lower(obj.Name), "skill") or
-                                      string.find(string.lower(obj.Name), "effect")
                         
-                        if isRed and obj.Transparency < 0.85 then
+                        -- เช็คทั้งสัญญาณเตือน, หิน, หนาม, ฮิตบ็อกซ์สกิล หรือพาร์ทรอบตัวที่มีขนาดใหญ่ผิดปกติ
+                        local isHazard = (color.R > 0.4 and color.G < 0.3 and color.B < 0.3) or 
+                                         string.find(nameLower, "spike") or 
+                                         string.find(nameLower, "rock") or 
+                                         string.find(nameLower, "stone") or 
+                                         string.find(nameLower, "hitbox") or 
+                                         string.find(nameLower, "warn") or 
+                                         string.find(nameLower, "zone") or
+                                         string.find(nameLower, "skill") or
+                                         string.find(nameLower, "effect") or
+                                         string.find(nameLower, "aoe") or
+                                         string.find(nameLower, "boss")
+                        
+                        if isHazard and obj.Transparency < 0.95 then
                             local dist = (obj.Position - hrpPos).Magnitude
-                            if dist < 18 then
+                            if dist < 25 then -- ขยายระยะตรวจจับให้กว้างขึ้น ป้องกันโดนทีเดียวตาย
                                 dangerDetected = true
                                 local pushDir = (hrpPos - obj.Position)
                                 pushDir = Vector3.new(pushDir.X, 0, pushDir.Z).Unit
                                 if pushDir.Magnitude == 0 then pushDir = Vector3.new(1, 0, 0) end
-                                escapeVector = escapeVector + (pushDir * 22)
+                                escapeVector = escapeVector + (pushDir * 35)
                             end
                         end
                     end
@@ -172,11 +179,12 @@ function startFarm()
         
         if dangerDetected then
             lastDodgeTime = tick()
-            return hrpPos + escapeVector + Vector3.new(0, 35, 0), true
+            return hrpPos + escapeVector + Vector3.new(0, 45, 0), true
         end
         
+        -- ถ้าอยู่ในช่วงคูลดาวน์หลังหลบ ให้รักษาระยะความสูงเอาไว้ก่อน
         if tick() - lastDodgeTime < dodgeDuration then
-            return hrpPos + Vector3.new(0, 35, 0), true
+            return hrpPos + Vector3.new(0, 45, 0), true
         end
         
         return nil, false
@@ -237,7 +245,7 @@ function startFarm()
         return nil
     end
 
-    -- ลูปหลักเคลื่อนไหวและหลบภัย
+    -- ลูปหลักควบคุมการเคลื่อนที่และระบบหลบอัตโนมัติ
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
@@ -256,7 +264,7 @@ function startFarm()
             local escapePos, isDanger = getSafeEscapePosition(hrp.Position)
             if isDanger then
                 hrp.CFrame = CFrame.new(escapePos)
-                timerLabel.Text = "Status: Dodging Hazard!"
+                timerLabel.Text = "Status: Auto-Dodge Active!"
             else
                 local targetHrp = getTarget()
                 if targetHrp then
