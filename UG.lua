@@ -308,7 +308,7 @@ function startFarm()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                -- เริ่มคอมโบปล่อยสกิลเมื่อสกิลพร้อมครบ 2 สกิล
+                -- เริ่มคอมโบปล่อยสกิลเมื่อสกิลพร้อมครบทั้งคู่
                 if isReady and not isExecutingCombo then
                     isExecutingCombo = true
 
@@ -317,7 +317,7 @@ function startFarm()
                         currentDynamicHeight = 20
                         task.wait(0.12)
 
-                        -- 2. วนปล่อยทีละสกิลจนกว่าคูลดาวน์ของทุกสกิลจะเริ่มนับ (> 0.5)
+                        -- 2. วนปล่อยทีละสกิล: กดย้ำๆ จนกว่าจะมั่นใจว่าสกิลนั้นกดติดจริง (คูลดาวน์เริ่มนับ > 0.2)
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
@@ -326,13 +326,18 @@ function startFarm()
                                 local keyName = tostring(slot.Value)
                                 local startWait = tick()
 
-                                -- กดย้ำปุ่มสกิลนั้นๆ จนกว่าคูลดาวน์จะเริ่มนับถอยหลังจริง
-                                repeat
+                                -- ลูปกดย้ำปุ่มไปเรื่อยๆ จนกว่าคูลดาวน์จะเริ่มนับถอยหลังจริง
+                                while cd and cd:IsA("ValueBase") and cd.Value <= 0.2 do
                                     pressKey(keyName)
-                                    task.wait(0.08)
-                                until (cd and cd:IsA("ValueBase") and cd.Value > 0.5) or (tick() - startWait) > 1.2
+                                    task.wait(0.06) -- กดย้ำถี่ขึ้นเพื่อดักจับจังหวะว่างของตัวละคร
+
+                                    -- ระบบป้องกันลูปค้าง (หากติดมึน/สตัดเกิน 2.5 วินาที ให้ข้ามไปสกิลถัดไป)
+                                    if (tick() - startWait) > 2.5 then
+                                        break
+                                    end
+                                end
                                 
-                                task.wait(0.12) -- เว้นจังหวะให้สกิลแรกปล่อยสำเร็จเต็มที่ก่อนไปสกิลถัดไป
+                                task.wait(0.15) -- เว้นช่วงให้แอนิเมชันสกิลแสดงผลเรียบร้อย
                             end
                         end
 
@@ -345,10 +350,10 @@ function startFarm()
                             end
                         end
 
-                        -- 4. ค้างต่อเล็กน้อยเพื่อให้ลูกพลังพุ่งออกไปพ้นตัว
+                        -- 4. ค้างต่อเล็กน้อยให้วิถีกระสุน/เอฟเฟกต์ปล่อยออกพ้นตัว
                         task.wait(0.25)
 
-                        -- 5. ยิงครบ 2 สกิลเรียบร้อย จึงปลดล็อกให้วาปกลับขึ้นที่สูง
+                        -- 5. สกิลกดสำเร็จครบเรียบร้อย ปลดล็อกให้สคริปต์พากลับขึ้นที่สูง
                         isExecutingCombo = false
                     end)
                 end
