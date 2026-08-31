@@ -253,7 +253,6 @@ function startFarm()
                     isDodgingBoss = false
                 end
 
-                -- คำนวณการหมุนวนรอบตัวมอนสเตอร์บนฟ้าอย่างต่อเนื่อง
                 orbitAngle = (orbitAngle + 0.05) % (math.pi * 2)
                 local orbitRadius = 16
                 local offsetX = math.cos(orbitAngle) * orbitRadius
@@ -270,7 +269,6 @@ function startFarm()
         end)
     end)
 
-    -- ระบบกดสกิลและโจมตีอัตโนมัติ
     task.spawn(function()
         while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             task.wait(0.05)
