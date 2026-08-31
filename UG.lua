@@ -1,7 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "King's Castle"
-local selectedDifficulty = "Nightmare"
+local selectedMap = "The Underworld"
+local selectedDifficulty = "Insane"
 
 -- ตั้งค่าฮิตบ็อกซ์
 local HITBOX_RADIUS = 150
@@ -279,7 +279,7 @@ function startFarm()
             end
         end
 
-        -- ต้องพร้อมใช้งานครบทั้ง 2 สกิล (หรือเท่าที่มี)
+        -- ต้องคูลดาวน์พร้อมใช้งานครบทั้ง 2 สกิล
         local requiredCount = math.min(2, totalSkills)
         if totalSkills > 0 and #readyTools >= requiredCount then
             return true, readyTools
@@ -308,16 +308,16 @@ function startFarm()
             if targetHrp and targetHum then
                 local isReady, readyTools = checkSkillsReady()
 
-                -- เริ่มกระบวนการดิ่งลงไปคอมโบปล่อยสกิล
+                -- เริ่มคอมโบปล่อยสกิลเมื่อสกิลพร้อมครบ 2 สกิล
                 if isReady and not isExecutingCombo then
                     isExecutingCombo = true
 
                     task.spawn(function()
-                        -- 1. ดิ่งลงมาความสูงระดับโจมตี
+                        -- 1. ลงมาความสูงระดับโจมตี
                         currentDynamicHeight = 20
                         task.wait(0.12)
 
-                        -- 2. วนลูปปล่อยสกิลทีละอันจนกว่าทุกสกิลจะขึ้นคูลดาวน์ (> 0.5)
+                        -- 2. วนปล่อยทีละสกิลจนกว่าคูลดาวน์ของทุกสกิลจะเริ่มนับ (> 0.5)
                         for _, item in ipairs(readyTools) do
                             local slot = item:FindFirstChild("abilitySlot")
                             local cd = item:FindFirstChild("cooldown")
@@ -332,12 +332,11 @@ function startFarm()
                                     task.wait(0.08)
                                 until (cd and cd:IsA("ValueBase") and cd.Value > 0.5) or (tick() - startWait) > 1.2
                                 
-                                -- หน่วงเวลาสั้นๆ ให้แอนิเมชันสกิลแรกแสดงผลก่อนไปสกิลถัดไป
-                                task.wait(0.15)
+                                task.wait(0.12) -- เว้นจังหวะให้สกิลแรกปล่อยสำเร็จเต็มที่ก่อนไปสกิลถัดไป
                             end
                         end
 
-                        -- 3. ตีธรรมดาเสริม
+                        -- 3. ตีธรรมดาปิดท้าย
                         local currentChar = LocalPlayer.Character
                         if currentChar then
                             local equippedTool = currentChar:FindFirstChildOfClass("Tool")
@@ -346,10 +345,10 @@ function startFarm()
                             end
                         end
 
-                        -- 4. ค้างต่ออีกนิดเพื่อให้วิถีกระสุนพุ่งออกจากตัวผู้เล่นสมบูรณ์
+                        -- 4. ค้างต่อเล็กน้อยเพื่อให้ลูกพลังพุ่งออกไปพ้นตัว
                         task.wait(0.25)
 
-                        -- 5. ปล่อยสกิลครบหมดแล้ว ค่อยปลดสถานะให้กลับขึ้นที่สูง
+                        -- 5. ยิงครบ 2 สกิลเรียบร้อย จึงปลดล็อกให้วาปกลับขึ้นที่สูง
                         isExecutingCombo = false
                     end)
                 end
@@ -358,7 +357,7 @@ function startFarm()
                 local orbitPos
 
                 if isExecutingCombo then
-                    -- ขณะดิ่งปล่อยสกิล: หมุนควงรอบตัวมอนสเตอร์
+                    -- ขณะปล่อยสกิล: ควงรอบตัวมอนสเตอร์ที่ระดับความสูง 20
                     local timeNow = tick()
                     local radius = 18 
                     local speed = 4   
@@ -368,7 +367,7 @@ function startFarm()
                     local offsetZ = math.sin(angle) * radius
                     orbitPos = targetPos + Vector3.new(offsetX, 20, offsetZ)
                 else
-                    -- ขณะรอคูลดาวน์: อยู่นิ่งๆ เหนือหัว และสลับความสูง 50, 60, 70 ทุก 1 วินาที
+                    -- ขณะรอคูลดาวน์: ลอยนิ่ง และสลับความสูง 50, 60, 70 ทุก 1 วินาที
                     if tick() - lastHeightChange >= 1 then
                         heightIndex = (heightIndex % #hoverHeights) + 1
                         currentDynamicHeight = hoverHeights[heightIndex]
