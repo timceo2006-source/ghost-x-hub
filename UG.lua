@@ -281,7 +281,7 @@ function startFarm()
                 
                 local safeHeight = 50 -- ความสูงตอนบินวนรอคูลดาวน์
                 if skillsReady or workspace:FindFirstChild("bossShot") then
-                    safeHeight = 10 -- ความสูงตอนพุ่งลงไปปล่อยสกิล (หรือหลบสกิลบอส)
+                    safeHeight = 15 -- ความสูงตอนพุ่งลงไปปล่อยสกิล (หรือหลบสกิลบอส)
                     isDivingToAttack = true
                 else
                     isDivingToAttack = false
