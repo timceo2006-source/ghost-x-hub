@@ -1,19 +1,7 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "King's Castle"
-local selectedDifficulty = "Nightmare"
-
--- ตั้งค่าเพิ่มเติม
-local USE_NORMAL_ATTACK = true -- true = ใช้ตีธรรมดาด้วย, false = ใช้เฉพาะสกิล
-local AUTO_DODGE_ENABLED = true -- เปิด/ปิด ระบบออโต้หลบอัจฉริยะ
-
--- ตั้งค่าเงื่อนไขพิเศษสำหรับบอส (เช่น Demon Lord Azrallik)
-local BOSS_CONFIGURATIONS = {
-    ["Demon Lord Azrallik"] = {
-        customHoverHeight = 160, -- ความสูงเวลารอคิว/สู้กับตัวนี้
-        skipNormalAttack = false
-    }
-}
+local selectedMap = "The Underworld"
+local selectedDifficulty = "Insane"
 
 -- ตั้งค่าฮิตบ็อกซ์
 local HITBOX_RADIUS = 150
@@ -60,7 +48,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm & Dodge"
+titleLabel.Text = "Dungeon Auto Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -201,6 +189,13 @@ function startFarm()
 
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
+    local isExecutingCombo = false
+
+    -- ความสูงสำหรับลอยนิ่งช่วงรอคูลดาวน์
+    local hoverHeights = {50, 60, 70}
+    local heightIndex = 1
+    local lastHeightChange = tick()
+    local currentDynamicHeight = hoverHeights[1]
 
     local function expandNearbyHitboxes(playerHrp)
         for _, obj in ipairs(workspace:GetDescendants()) do
@@ -259,8 +254,10 @@ function startFarm()
         return nil, nil
     end
 
-    -- ฟังก์ชันตรวจสอบและกดใช้สกิลทั้งหมดที่พร้อมใช้งานแบบง่าย
-    local function executeSkillsAndAttacks(bossConfig)
+    local function checkSkillsReady()
+        local readyTools = {}
+        local totalSkills = 0
+        
         local items = {}
         if LocalPlayer:FindFirstChild("Backpack") then
             for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
@@ -269,66 +266,25 @@ function startFarm()
             for _, v in ipairs(LocalPlayer.Character:GetChildren()) do table.insert(items, v) end
         end
 
-        -- กดใช้สกิลที่คูลดาวน์หมดแล้ว
         for _, item in ipairs(items) do
             if item:IsA("Tool") then
                 local slot = item:FindFirstChild("abilitySlot")
                 local cd = item:FindFirstChild("cooldown")
                 if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
+                    totalSkills = totalSkills + 1
                     if cd.Value <= 0.1 then
-                        pressKey(tostring(slot.Value))
-                        task.wait(0.04)
+                        table.insert(readyTools, item)
                     end
                 end
             end
         end
 
-        -- ตีธรรมดา (ถ้าเปิดใช้งาน)
-        local shouldAttackNormal = USE_NORMAL_ATTACK
-        if bossConfig and bossConfig.skipNormalAttack ~= nil then
-            shouldAttackNormal = not bossConfig.skipNormalAttack
+        -- ต้องคูลดาวน์พร้อมใช้งานครบทั้ง 2 สกิล
+        local requiredCount = math.min(2, totalSkills)
+        if totalSkills > 0 and #readyTools >= requiredCount then
+            return true, readyTools
         end
-
-        if shouldAttackNormal and LocalPlayer.Character then
-            local equippedTool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
-            if equippedTool then
-                equippedTool:Activate()
-            end
-        end
-    end
-
-    -- ฟังก์ชันคำนวณการหลบอัจฉริยะ (Auto Dodge แบบ 100% ครอบคลุมเลเซอร์และวงเตือนภัย)
-    local function getDodgeOffset(playerHrp)
-        if not AUTO_DODGE_ENABLED then return Vector3.new(0, 0, 0) end
-
-        local dodgeShift = Vector3.new(0, 0, 0)
-        local dangerDetected = false
-
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") then
-                -- เช็คเงื่อนไขวัตถุอันตราย (พาร์ทเตือนภัยสีแดง, เลเซอร์, หรือชื่อที่เกี่ยวข้องกับสกิล)
-                local isRedColor = obj.Color.R > 0.7 and obj.Color.G < 0.3 and obj.Color.B < 0.3
-                local isWarningName = (obj.Name:lower():find("warning") or obj.Name:lower():find("indicator") or obj.Name:lower():find("danger") or obj.Name:lower():find("laser") or obj.Name:lower():find("zone"))
-
-                if isRedColor or isWarningName then
-                    local dist = (obj.Position - playerHrp.Position).Magnitude
-                    -- ถ้ารัศมีสกิล/พาร์ทอันตรายเข้ามาใกล้ตัวในระยะ 30 หน่วย
-                    if dist <= 30 then
-                        dangerDetected = true
-                        -- คำนวณทิศทางพุ่งหลบออกด้านข้าง + ลอยขึ้นฟ้าเพื่อความปลอดภัยสูงสุด
-                        local escapeDir = (playerHrp.Position - obj.Position)
-                        escapeDir = Vector3.new(escapeDir.X, 0, escapeDir.Z).Unit
-                        if escapeDir.Magnitude == 0 then escapeDir = Vector3.new(1, 0, 0) end
-                        
-                        -- วาปหลบออกด้านข้าง 12 หน่วย และลอยสูงขึ้น 35 หน่วยทันที
-                        dodgeShift = (escapeDir * 12) + Vector3.new(0, 35, 0)
-                        break
-                    end
-                end
-            end
-        end
-
-        return dangerDetected, dodgeShift
+        return false, {}
     end
 
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
@@ -350,32 +306,86 @@ function startFarm()
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                local bossConfig = nil
-                if currentTargetModel and BOSS_CONFIGURATIONS[currentTargetModel.Name] then
-                    bossConfig = BOSS_CONFIGURATIONS[currentTargetModel.Name]
+                local isReady, readyTools = checkSkillsReady()
+
+                -- เริ่มคอมโบปล่อยสกิลเมื่อสกิลพร้อมครบทั้งคู่
+                if isReady and not isExecutingCombo then
+                    isExecutingCombo = true
+
+                    task.spawn(function()
+                        -- 1. ลงมาความสูงระดับโจมตี
+                        currentDynamicHeight = 20
+                        task.wait(0.12)
+
+                        -- 2. วนปล่อยทีละสกิล: กดย้ำๆ จนกว่าจะมั่นใจว่าสกิลนั้นกดติดจริง (คูลดาวน์เริ่มนับ > 0.2)
+                        for _, item in ipairs(readyTools) do
+                            local slot = item:FindFirstChild("abilitySlot")
+                            local cd = item:FindFirstChild("cooldown")
+
+                            if slot and slot:IsA("ValueBase") then
+                                local keyName = tostring(slot.Value)
+                                local startWait = tick()
+
+                                -- ลูปกดย้ำปุ่มไปเรื่อยๆ จนกว่าคูลดาวน์จะเริ่มนับถอยหลังจริง
+                                while cd and cd:IsA("ValueBase") and cd.Value <= 0.2 do
+                                    pressKey(keyName)
+                                    task.wait(0.06) -- กดย้ำถี่ขึ้นเพื่อดักจับจังหวะว่างของตัวละคร
+
+                                    -- ระบบป้องกันลูปค้าง (หากติดมึน/สตัดเกิน 2.5 วินาที ให้ข้ามไปสกิลถัดไป)
+                                    if (tick() - startWait) > 2.5 then
+                                        break
+                                    end
+                                end
+                                
+                                task.wait(0.15) -- เว้นช่วงให้แอนิเมชันสกิลแสดงผลเรียบร้อย
+                            end
+                        end
+
+                        -- 3. ตีธรรมดาปิดท้าย
+                        local currentChar = LocalPlayer.Character
+                        if currentChar then
+                            local equippedTool = currentChar:FindFirstChildOfClass("Tool")
+                            if equippedTool then
+                                equippedTool:Activate()
+                            end
+                        end
+
+                        -- 4. ค้างต่อเล็กน้อยให้วิถีกระสุน/เอฟเฟกต์ปล่อยออกพ้นตัว
+                        task.wait(0.25)
+
+                        -- 5. สกิลกดสำเร็จครบเรียบร้อย ปลดล็อกให้สคริปต์พากลับขึ้นที่สูง
+                        isExecutingCombo = false
+                    end)
                 end
 
-                -- ตรวจสอบว่ามีสกิลพุ่งมาต้องหลบไหม
-                local isDanger, dodgeShift = getDodgeOffset(hrp)
                 local targetPos = targetHrp.Position
-                local safePos
+                local orbitPos
 
-                if isDanger then
-                    -- โหมดหลบภัยเร่งด่วน (วาปหลบออกด้านข้าง/ขึ้นฟ้าทันทีแต่ยังหันหน้ามองบอส)
-                    safePos = targetPos + dodgeShift
+                if isExecutingCombo then
+                    -- ขณะปล่อยสกิล: ควงรอบตัวมอนสเตอร์ที่ระดับความสูง 20
+                    local timeNow = tick()
+                    local radius = 18 
+                    local speed = 4   
+                    local angle = timeNow * speed
+                    
+                    local offsetX = math.cos(angle) * radius
+                    local offsetZ = math.sin(angle) * radius
+                    orbitPos = targetPos + Vector3.new(offsetX, 20, offsetZ)
                 else
-                    -- โหมดปกติ: ลอยนิ่งๆ อยู่เหนือหัวบอสอย่างมั่นคง ไม่ต้องหมุนให้เวียนหัว
-                    local hoverHeight = bossConfig and bossConfig.customHoverHeight or 90
-                    safePos = targetPos + Vector3.new(0, hoverHeight, 0)
+                    -- ขณะรอคูลดาวน์: ลอยนิ่ง และสลับความสูง 50, 60, 70 ทุก 1 วินาที
+                    if tick() - lastHeightChange >= 1 then
+                        heightIndex = (heightIndex % #hoverHeights) + 1
+                        currentDynamicHeight = hoverHeights[heightIndex]
+                        lastHeightChange = tick()
+                    end
+
+                    orbitPos = targetPos + Vector3.new(0, currentDynamicHeight, 0)
                 end
 
-                -- ล็อคตำแหน่งและหันหน้าจ้องมองมอนสเตอร์ตลอดเวลา พร้อมโจมตีอัตโนมัติ
-                hrp.CFrame = CFrame.lookAt(safePos, targetPos)
-
-                -- สั่งโจมตีและใช้สกิลต่อเนื่อง
-                executeSkillsAndAttacks(bossConfig)
+                hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
             else
+                isExecutingCombo = false
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
