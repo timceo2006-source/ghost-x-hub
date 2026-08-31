@@ -185,7 +185,7 @@ function startFarm()
 
     local currentTarget = nil
     local lastFoundMonsterTime = tick()
-    local isDivingToAttack = false -- สถานะกำลังพุ่งลงไปปล่อยสกิล
+    local isDivingToAttack = false
 
     local function getTarget()
         if currentTarget and currentTarget.Parent then
@@ -214,7 +214,8 @@ function startFarm()
                 if hum and hrp and hum.Health > 0 then
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
                         currentTarget = obj
-                        hrp.Size = Vector3.new(40, 40, 40)
+                        -- ขยาย Hitbox ให้ใหญ่ขึ้นครอบคลุมพื้นที่กว้างขึ้น (65x65x65)
+                        hrp.Size = Vector3.new(65, 65, 65)
                         hrp.Transparency = 0.8
                         hrp.CanCollide = false
                         lastFoundMonsterTime = tick()
@@ -226,7 +227,6 @@ function startFarm()
         return nil
     end
 
-    -- ฟังก์ชันเช็คว่าสกิลพร้อมใช้งาน (คูลดาวน์หมด) ครบตามเงื่อนไขไหม
     local function areSkillsReady()
         local readyCount = 0
         local totalSkills = 0
@@ -252,7 +252,6 @@ function startFarm()
             end
         end
 
-        -- ถ้ามีสกิลพร้อมตั้งแต่ 2 สกิลขึ้นไป (หรือตามที่มี) ให้ถือว่าพร้อมปล่อย
         if totalSkills > 0 and readyCount >= math.min(2, totalSkills) then
             return true, items
         end
@@ -276,20 +275,21 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                -- เช็คสถานะสกิลเพื่อเลือกระดับความสูง
                 local skillsReady, items = areSkillsReady()
                 
-                local safeHeight = 75 -- ความสูงตอนบินวนรอคูลดาวน์
+                local safeHeight = 50 -- ความสูงตอนบินวนรอคูลดาวน์
+                local diveHeight = 20 -- ปรับความสูงตอนปล่อยสกิลให้ไม่ต่ำเกินไป (ป้องกันโดนดาเมจ)
+                
+                local currentHeight = safeHeight
                 if skillsReady or workspace:FindFirstChild("bossShot") then
-                    safeHeight = 15 -- ความสูงตอนพุ่งลงไปปล่อยสกิล (หรือหลบสกิลบอส)
+                    currentHeight = diveHeight
                     isDivingToAttack = true
                 else
                     isDivingToAttack = false
                 end
 
-                -- คำนวณตำแหน่งหมุนวนรอบมอนสเตอร์ (Orbiting) ทั้งตอนสูงและตอนลง
                 local timeNow = tick()
-                local radius = 12 
+                local radius = 15 -- ขยายรัศมีการวนรอบให้กว้างขึ้นเล็กน้อยเพื่อความปลอดภัย
                 local speed = 3   
                 local angle = timeNow * speed
                 
@@ -297,12 +297,10 @@ function startFarm()
                 local offsetZ = math.sin(angle) * radius
                 
                 local targetPos = targetHrp.Position
-                local orbitPos = targetPos + Vector3.new(offsetX, safeHeight, offsetZ)
+                local orbitPos = targetPos + Vector3.new(offsetX, currentHeight, offsetZ)
                 
-                -- เคลื่อนที่ตามวงกลมและหันหน้าเข้าหามอนสเตอร์ตลอดเวลา
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
-                -- ถ้าอยู่ในระยะพุ่งลงมาแล้ว สกิลพร้อม ให้กดปล่อยสกิลทันที
                 if isDivingToAttack and skillsReady then
                     for _, item in ipairs(items) do
                         if item:IsA("Tool") then
@@ -311,12 +309,11 @@ function startFarm()
                             if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                                 if cd.Value <= 0.1 then
                                     pressKey(tostring(slot.Value))
-                                    task.wait(0.05) -- หน่วงเวลาเล็กน้อยระหว่างกดสกิลคู่กัน
+                                    task.wait(0.05)
                                 end
                             end
                         end
                     end
-                    -- ใช้การโจมตีปกติร่วมด้วยตอนอยู่ใกล้
                     local equippedTool = char:FindFirstChildOfClass("Tool")
                     if equippedTool then
                         equippedTool:Activate()
