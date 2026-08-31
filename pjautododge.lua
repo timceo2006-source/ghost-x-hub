@@ -7,10 +7,10 @@ local selectedDifficulty = "Insane"
 local USE_NORMAL_ATTACK = true -- true = ใช้ตีธรรมดาด้วย, false = ใช้เฉพาะสกิล
 local AUTO_DODGE_ENABLED = true -- เปิด/ปิด ระบบออโต้หลบอัจฉริยะ
 
--- ตั้งค่าเงื่อนไขพิเศษสำหรับบอส (ปรับความสูงลงมาเหลือ 35 เพื่อให้ปล่อยสกิลโดนง่ายขึ้น)
+-- ตั้งค่าเงื่อนไขพิเศษสำหรับบอส
 local BOSS_CONFIGURATIONS = {
     ["Demon Lord Azrallik"] = {
-        customHoverHeight = 35, -- ลดความสูงลงมาให้อยู่ในระยะปล่อยสกิลโดน
+        customHoverHeight = 35,
         skipNormalAttack = false
     }
 }
@@ -201,8 +201,10 @@ function startFarm()
 
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
+    local lastDangerTime = 0
+    local cachedDodgeShift = Vector3.new(0, 0, 0)
 
-    -- ฟังก์ชันดึงพาร์ทหลักของมอนสเตอร์ รองรับทุกชื่อ
+    -- ฟังก์ชันดึงพาร์ทหลักของมอนสเตอร์
     local function getMonsterRootPart(obj)
         local hrp = obj:FindFirstChild("HumanoidRootPart") 
             or obj:FindFirstChild("Torso") 
@@ -302,7 +304,7 @@ function startFarm()
         return nil, nil
     end
 
-    -- ฟังก์ชันตรวจสอบและกดใช้สกิลทั้งหมดที่พร้อมใช้งานแบบง่าย
+    -- ฟังก์ชันตรวจสอบและกดใช้สกิลทั้งหมด
     local function executeSkillsAndAttacks(bossConfig)
         local items = {}
         if LocalPlayer:FindFirstChild("Backpack") then
@@ -312,7 +314,6 @@ function startFarm()
             for _, v in ipairs(LocalPlayer.Character:GetChildren()) do table.insert(items, v) end
         end
 
-        -- กดใช้สกิลที่คูลดาวน์หมดแล้ว
         for _, item in ipairs(items) do
             if item:IsA("Tool") then
                 local slot = item:FindFirstChild("abilitySlot")
@@ -326,7 +327,6 @@ function startFarm()
             end
         end
 
-        -- ตีธรรมดา (ถ้าเปิดใช้งาน)
         local shouldAttackNormal = USE_NORMAL_ATTACK
         if bossConfig and bossConfig.skipNormalAttack ~= nil then
             shouldAttackNormal = not bossConfig.skipNormalAttack
@@ -340,12 +340,13 @@ function startFarm()
         end
     end
 
-    -- ฟังก์ชันคำนวณการหลบอัจฉริยะ (Auto Dodge แบบ 100% ครอบคลุมเลเซอร์และวงเตือนภัย)
+    -- ฟังก์ชันคำนวณการหลบอัจฉริยะ (แบบเนียนๆ ไม่กระตุก)
     local function getDodgeOffset(playerHrp)
-        if not AUTO_DODGE_ENABLED then return Vector3.new(0, 0, 0) end
+        if not AUTO_DODGE_ENABLED then return false, Vector3.new(0, 0, 0) end
 
-        local dodgeShift = Vector3.new(0, 0, 0)
         local dangerDetected = false
+        local nearestDangerPos = nil
+        local minDst = 35
 
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("BasePart") then
@@ -354,21 +355,28 @@ function startFarm()
 
                 if isRedColor or isWarningName then
                     local dist = (obj.Position - playerHrp.Position).Magnitude
-                    if dist <= 30 then
+                    if dist <= minDst then
                         dangerDetected = true
-                        local escapeDir = (playerHrp.Position - obj.Position)
-                        escapeDir = Vector3.new(escapeDir.X, 0, escapeDir.Z).Unit
-                        if escapeDir.Magnitude == 0 then escapeDir = Vector3.new(1, 0, 0) end
-                        
-                        -- เมื่อหลบจะพุ่งออกด้านข้างและลอยขึ้นสูง 35 หน่วยเพื่อความปลอดภัย
-                        dodgeShift = (escapeDir * 12) + Vector3.new(0, 35, 0)
-                        break
+                        nearestDangerPos = obj.Position
+                        minDst = dist
                     end
                 end
             end
         end
 
-        return dangerDetected, dodgeShift
+        if dangerDetected and nearestDangerPos then
+            lastDangerTime = tick()
+            local escapeDir = (playerHrp.Position - nearestDangerPos)
+            escapeDir = Vector3.new(escapeDir.X, 0, escapeDir.Z).Unit
+            if escapeDir.Magnitude == 0 then escapeDir = Vector3.new(1, 0, 0) end
+            cachedDodgeShift = (escapeDir * 15) + Vector3.new(0, 28, 0)
+            return true, cachedDodgeShift
+        elseif (tick() - lastDangerTime) < 0.4 then
+            -- ค้างสถานะหลบต่อช่วงสั้นๆ เพื่อกันอาการกระตุกรัวๆ
+            return true, cachedDodgeShift
+        end
+
+        return false, Vector3.new(0, 0, 0)
     end
 
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
@@ -397,17 +405,18 @@ function startFarm()
 
                 local isDanger, dodgeShift = getDodgeOffset(hrp)
                 local targetPos = targetHrp.Position
-                local safePos
+                local desiredPos
 
                 if isDanger then
-                    safePos = targetPos + dodgeShift
+                    desiredPos = targetPos + dodgeShift
                 else
-                    -- ปรับความสูงปกติลดลงเหลือ 25 (หรือตามค่า config) เพื่อให้ปล่อยสกิลโจมตีโดนเป้าหมายชัวร์ๆ
                     local hoverHeight = bossConfig and bossConfig.customHoverHeight or 25
-                    safePos = targetPos + Vector3.new(0, hoverHeight, 0)
+                    desiredPos = targetPos + Vector3.new(0, hoverHeight, 0)
                 end
 
-                hrp.CFrame = CFrame.lookAt(safePos, targetPos)
+                local targetCFrame = CFrame.lookAt(desiredPos, targetPos)
+                -- ใช้ Lerp ความเร็วสูงแต่นุ่มนวล (ลบอาการยึกยักออกทั้งหมด)
+                hrp.CFrame = hrp.CFrame:Lerp(targetCFrame, 0.35)
                 executeSkillsAndAttacks(bossConfig)
 
             else
