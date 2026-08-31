@@ -3,8 +3,7 @@ local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "The Underworld"
 local selectedDifficulty = "Insane"
 
-local USE_NORMAL_ATTACK = true 
-local HOVER_HEIGHT = 30 -- ความสูงในการลอยตัวเหนือเป้าหมายเพื่อเลี่ยงฮิตบ็อกซ์พื้นดิน
+local HOVER_HEIGHT = 22 -- ความสูงเหนือหัวเป้าหมาย (พ้นระยะหินพุ่งจากพื้นแน่นอน)
 
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
@@ -19,7 +18,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- ==================== GUI (มุมขวาบน) ====================
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DungeonFarmGui"
+screenGui.Name = "CleanDungeonFarm"
 screenGui.ResetOnSpawn = false
 if syn and syn.protect_gui then
     syn.protect_gui(screenGui)
@@ -44,7 +43,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "MaxHub Logic Simulation"
+titleLabel.Text = "Fixed Hover Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 12
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -131,66 +130,8 @@ function startFarm()
 
     local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
-    local lastDodgeTime = 0
-    local dodgeDuration = 1.8 -- เวลาหนีภัยนานขึ้นเพื่อให้พ้นรัศมีสกิลคอมโบ
 
-    -- ระบบจำลอง Auto Dodge แบบ MaxHub: ตรวจจับวัตถุอันตรายและฮิตบ็อกซ์รอบตัวแบบไดนามิก
-    local function getSafeEscapePosition(hrpPos)
-        local dungeon = workspace:FindFirstChild("dungeon")
-        if not dungeon then return nil, false end
-        
-        local dangerDetected = false
-        local escapeVector = Vector3.new(0, 0, 0)
-        
-        for _, room in ipairs(dungeon:GetChildren()) do
-            if room:IsA("Folder") or room:IsA("Model") then
-                for _, obj in ipairs(room:GetDescendants()) do
-                    if obj:IsA("BasePart") then
-                        local nameLower = string.lower(obj.Name)
-                        local color = obj.Color
-                        
-                        -- เช็คทั้งสัญญาณเตือน, หิน, หนาม, ฮิตบ็อกซ์สกิล หรือพาร์ทรอบตัวที่มีขนาดใหญ่ผิดปกติ
-                        local isHazard = (color.R > 0.4 and color.G < 0.3 and color.B < 0.3) or 
-                                         string.find(nameLower, "spike") or 
-                                         string.find(nameLower, "rock") or 
-                                         string.find(nameLower, "stone") or 
-                                         string.find(nameLower, "hitbox") or 
-                                         string.find(nameLower, "warn") or 
-                                         string.find(nameLower, "zone") or
-                                         string.find(nameLower, "skill") or
-                                         string.find(nameLower, "effect") or
-                                         string.find(nameLower, "aoe") or
-                                         string.find(nameLower, "boss")
-                        
-                        if isHazard and obj.Transparency < 0.95 then
-                            local dist = (obj.Position - hrpPos).Magnitude
-                            if dist < 25 then -- ขยายระยะตรวจจับให้กว้างขึ้น ป้องกันโดนทีเดียวตาย
-                                dangerDetected = true
-                                local pushDir = (hrpPos - obj.Position)
-                                pushDir = Vector3.new(pushDir.X, 0, pushDir.Z).Unit
-                                if pushDir.Magnitude == 0 then pushDir = Vector3.new(1, 0, 0) end
-                                escapeVector = escapeVector + (pushDir * 35)
-                            end
-                        end
-                    end
-                end
-            end
-        end
-        
-        if dangerDetected then
-            lastDodgeTime = tick()
-            return hrpPos + escapeVector + Vector3.new(0, 45, 0), true
-        end
-        
-        -- ถ้าอยู่ในช่วงคูลดาวน์หลังหลบ ให้รักษาระยะความสูงเอาไว้ก่อน
-        if tick() - lastDodgeTime < dodgeDuration then
-            return hrpPos + Vector3.new(0, 45, 0), true
-        end
-        
-        return nil, false
-    end
-
-    -- ระบบเลือกเป้าหมาย: หัวใจบอส -> ตัวที่ใกล้ที่สุด
+    -- ฟังก์ชันหาเป้าหมาย (เน้นหัวใจบอส หรือมอนสเตอร์ที่ใกล้ที่สุด)
     local function getTarget()
         local char = LocalPlayer.Character
         local hrp = char and char:FindFirstChild("HumanoidRootPart")
@@ -228,24 +169,10 @@ function startFarm()
             end
         end
 
-        if bestHeart then
-            bestHeart.Size = Vector3.new(25, 25, 25)
-            bestHeart.Transparency = 0.8
-            bestHeart.CanCollide = false
-            return bestHeart
-        end
-
-        if nearestEnemy then
-            nearestEnemy.Size = Vector3.new(25, 25, 25)
-            nearestEnemy.Transparency = 0.8
-            nearestEnemy.CanCollide = false
-            return nearestEnemy
-        end
-
-        return nil
+        return bestHeart or nearestEnemy
     end
 
-    -- ลูปหลักควบคุมการเคลื่อนที่และระบบหลบอัตโนมัติ
+    -- ลูปหลัก: ลอยตัวนิ่งเหนือหัวเป้าหมายแบบแม่นยำ ไม่บินหนีเรื่อยเปื่อย
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
@@ -256,33 +183,30 @@ function startFarm()
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if not hrp then return end
             
+            -- ปิดการชนเพื่อไม่ให้ติดวัตถุกีดขวาง
             for _, part in ipairs(char:GetDescendants()) do
                 if part:IsA("BasePart") then part.CanCollide = false end
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0) 
             
-            local escapePos, isDanger = getSafeEscapePosition(hrp.Position)
-            if isDanger then
-                hrp.CFrame = CFrame.new(escapePos)
-                timerLabel.Text = "Status: Auto-Dodge Active!"
+            local targetHrp = getTarget()
+            if targetHrp then
+                lastFoundMonsterTime = tick()
+                timerLabel.Text = "Status: Farming"
+                
+                -- ล็อกตำแหน่งลอยอยู่เหนือหัวเป้าหมายพอดี (ปลอดภัยจากหินใต้พื้น 100%)
+                local safePos = targetHrp.Position + Vector3.new(0, HOVER_HEIGHT, 0)
+                hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
             else
-                local targetHrp = getTarget()
-                if targetHrp then
-                    lastFoundMonsterTime = tick()
-                    timerLabel.Text = "Status: Attacking"
-                    local safePos = targetHrp.Position + Vector3.new(0, HOVER_HEIGHT, 0)
-                    hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
-                else
-                    timerLabel.Text = "Status: Searching..."
-                    if tick() - lastFoundMonsterTime > 1.5 then
-                        tryStartGame()
-                    end
+                timerLabel.Text = "Status: Searching..."
+                if tick() - lastFoundMonsterTime > 1.5 then
+                    tryStartGame()
                 end
             end
         end)
     end)
 
-    -- ลูปกดสกิลและโจมตีปกติ
+    -- ลูปกดสกิลและโจมตีอัตโนมัติ
     task.spawn(function()
         while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             pcall(function()
@@ -290,6 +214,7 @@ function startFarm()
                 if char and char:FindFirstChild("Humanoid") and char.Humanoid.Health > 0 then
                     local targetHrp = getTarget()
                     if targetHrp then
+                        -- กดสกิลจากคีย์บอร์ด
                         if tick() - lastSkillTime > 0.15 then
                             local items = {}
                             if LocalPlayer:FindFirstChild("Backpack") then
@@ -312,11 +237,10 @@ function startFarm()
                             end
                         end
                         
-                        if USE_NORMAL_ATTACK then
-                            local equippedTool = char:FindFirstChildOfClass("Tool")
-                            if equippedTool then
-                                equippedTool:Activate()
-                            end
+                        -- โจมตีปกติด้วยอาวุธที่ถืออยู่
+                        local equippedTool = char:FindFirstChildOfClass("Tool")
+                        if equippedTool then
+                            equippedTool:Activate()
                         end
                     end
                 end
@@ -326,6 +250,7 @@ function startFarm()
     end)
 end
 
+-- ระบบจัดการล็อบบี้และเริ่มเกมอัตโนมัติ
 task.spawn(function()
     while true do
         if getgenv().AutoCreateAndStart then
@@ -360,7 +285,7 @@ task.spawn(function()
                     end
                 end)
             else
-                timerLabel.Text = "In Dungeon / Farming"
+                timerLabel.Text = "In Dungeon"
                 if not getgenv().DungeonFarmLoop then
                     task.defer(startFarm)
                 end
