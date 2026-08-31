@@ -350,7 +350,7 @@ function startFarm()
 
                         -- STEP 2: ขึ้นมารอ 1 วินาที ที่ความสูง 30
                         currentDynamicHeight = 30
-                        task.wait(1)
+                        task.wait(0.3)
 
                         -- STEP 3: ขึ้นไปรอคูลดาวน์ที่ความสูง 60
                         currentDynamicHeight = 60
