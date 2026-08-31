@@ -73,7 +73,7 @@ InfoBox.BorderSizePixel = 0
 InfoBox.Position = UDim2.new(0.05, 0, 0.12, 0)
 InfoBox.Size = UDim2.new(0.9, 0, 0, 85)
 InfoBox.Font = Enum.Font.Code
-InfoBox.Text = "สถานะ: พร้อมใช้งาน\n(กดรีเฟรชเพื่อสแกนหาพาร์ทสกิล/เส้นแดงใต้เท้า)"
+InfoBox.Text = "สถานะ: พร้อมใช้งาน (Logic ฟาร์มใหม่)\n(กดรีเฟรชเพื่อสแกนหาพาร์ทสกิล/เส้นแดงใต้เท้า)"
 InfoBox.TextColor3 = Color3.fromRGB(100, 255, 100)
 InfoBox.TextSize = 11
 InfoBox.TextWrapped = true
@@ -136,14 +136,12 @@ local function scanForSkills()
                     local nameLower = obj.Name:lower()
                     local col = obj.Color
                     
-                    -- เช็คว่าเข้าข่ายสกิลบอส เช่น ชื่อมีคำว่า warning, shot, skill, hit, attack 
-                    -- หรือเช็คว่าเป็นพาร์ทสีแดงเด่นๆ (เช่น แดงจัด R > 0.8, G < 0.2, B < 0.2) ที่โผล่มาใกล้ตัว
                     local isRedPart = (col.R > 0.7 and col.G < 0.3 and col.B < 0.3)
                     local hasKeyword = nameLower:find("shot") or nameLower:find("skill") or nameLower:find("warning") or nameLower:find("attack") or nameLower:find("hitbox") or nameLower:find("danger") or nameLower:find("effect")
 
                     if hasKeyword or isRedPart then
                         local dist = (obj.Position - hrp.Position).Magnitude
-                        if dist <= 60 then -- รัศมีตรวจจับรอบตัว 60 เมตร
+                        if dist <= 60 then
                             local tag = isRedPart and "[พาร์ทสีแดงเตือนภัย]" or "[พาร์ทสกิล]"
                             table.insert(detectedSkills, string.format("- %s %s (ระยะ: %.1fม.)", tag, obj.Name, dist))
                         end
@@ -154,7 +152,6 @@ local function scanForSkills()
     end
 
     if #detectedSkills > 0 then
-        -- ตัดเอาเฉพาะตัวที่เจอเด่นๆ ไม่ให้ข้อความล้น
         InfoBox.Text = "🚨 ตรวจพบสกิล/เส้นแดงใกล้ตัว:\n" .. table.concat(detectedSkills, "\n")
     else
         InfoBox.Text = "✅ ปลอดภัย: ไม่พบพาร์ทสกิลหรือเส้นแดงใต้เท้า"
@@ -200,7 +197,7 @@ local function pressKey(keyStr)
     end
 end
 
--- ลูปเช็คสกิลต่อเนื่อง (เมื่อกดเปิดสวิตช์ปุ่มที่ 2)
+-- ลูปเช็คสกิลต่อเนื่อง
 task.spawn(function()
     while true do
         task.wait(0.4)
@@ -223,39 +220,55 @@ local function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then return end
     stopFarm()
 
-    local currentTarget = nil
+    local currentTargetModel = nil
     local lastSkillTime = 0
     local isDodgingBoss = false
 
+    -- Logic การกรองและเลือกเป้าหมายแบบใหม่ (คุมระยะไม่ให้เกิน 150 และกรองพรีวิวออก)
     local function getTarget()
-        if currentTarget and currentTarget.Parent then
-            local hum = currentTarget:FindFirstChild("Humanoid")
+        local char = LocalPlayer.Character
+        local playerHrp = char and char:FindFirstChild("HumanoidRootPart")
+
+        if currentTargetModel and currentTargetModel.Parent then
+            local hum = currentTargetModel:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
-                local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
-                if hrp then return hrp end
+                local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
+                if hrp and playerHrp then
+                    if (hrp.Position - playerHrp.Position).Magnitude < 150 then
+                        return hrp, hum
+                    end
+                end
             end
         end
 
-        currentTarget = nil
-        local scanArea = workspace:FindFirstChild("dungeon") or workspace
-
-        for _, obj in ipairs(scanArea:GetDescendants()) do
+        currentTargetModel = nil
+        
+        for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+                local modelName = obj.Name
+                -- กรองข้ามพรีวิวหรือมอนสเตอร์จำลอง
+                if modelName:find("_reyillsPreview") or modelName:find("Preview") then
+                    continue
+                end
+
                 local hum = obj:FindFirstChild("Humanoid")
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                 if hum and hrp and hum.Health > 0 then
-                    currentTarget = obj
-                    hrp.Size = Vector3.new(25, 25, 25)
-                    hrp.Transparency = 0.8
-                    hrp.CanCollide = false
-                    return hrp
+                    if playerHrp and (hrp.Position - playerHrp.Position).Magnitude <= 150 then
+                        currentTargetModel = obj
+                        hrp.Size = Vector3.new(20, 20, 20)
+                        hrp.Transparency = 0.8
+                        hrp.CanCollide = false
+                        return hrp, hum
+                    end
                 end
             end
         end
-        return nil
+        return nil, nil
     end
 
+    -- Logic การเคลื่อนที่และฟาร์มแบบใหม่ (Heartbeat)
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
@@ -271,11 +284,11 @@ local function startFarm()
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-            local targetHrp = getTarget()
-            if targetHrp then
+            local targetHrp, targetHum = getTarget()
+            if targetHrp and targetHum then
                 local safeHeight = 12
-                -- เช็คพาร์ทสกิลหรือบอสช็อตเพื่อบินหลบขึ้นที่สูงอัตโนมัติ
                 local hasSkillNearby = false
+                
                 for _, obj in ipairs(workspace:GetDescendants()) do
                     if obj:IsA("BasePart") and (obj.Name:lower():find("bossshot") or obj.Name:lower():find("warning") or obj.Name:lower():find("skill")) then
                         if (obj.Position - hrp.Position).Magnitude < 30 then
@@ -292,14 +305,16 @@ local function startFarm()
                     isDodgingBoss = false
                 end
 
-                local safePos = targetHrp.Position + Vector3.new(0, safeHeight, 0)
-                hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
+                -- ใช้การคำนวณตำแหน่งแบบสมูทเข้าหาเป้าหมายใหม่
+                local targetPos = targetHrp.Position + Vector3.new(0, safeHeight, 0)
+                hrp.CFrame = hrp.CFrame:Lerp(CFrame.lookAt(targetPos, targetHrp.Position), 0.3)
             else
                 isDodgingBoss = false
             end
         end)
     end)
 
+    -- ลูปกดสกิลและโจมตีแบบใหม่
     task.spawn(function()
         while getgenv().AutoFarmEnabled do
             task.wait(0.05)
