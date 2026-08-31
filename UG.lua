@@ -44,9 +44,9 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm (Orbit)"
+titleLabel.Text = "Dungeon Auto Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 12
+titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
 titleLabel.Parent = mainFrame
 
@@ -187,7 +187,6 @@ function startFarm()
     local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
     local isDodgingBoss = false
-    local orbitAngle = 0
 
     local function getTarget()
         if currentTarget and currentTarget.Parent then
@@ -245,21 +244,28 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 22
+                local safeHeight = 18
                 if workspace:FindFirstChild("bossShot") then
-                    safeHeight = 55
+                    safeHeight = 45
                     isDodgingBoss = true
                 else
                     isDodgingBoss = false
                 end
 
-                orbitAngle = (orbitAngle + 0.05) % (math.pi * 2)
-                local orbitRadius = 16
-                local offsetX = math.cos(orbitAngle) * orbitRadius
-                local offsetZ = math.sin(orbitAngle) * orbitRadius
-
-                local orbitPos = targetHrp.Position + Vector3.new(offsetX, safeHeight, offsetZ)
-                hrp.CFrame = CFrame.lookAt(orbitPos, targetHrp.Position)
+                -- คำนวณตำแหน่งวนรอบตัวมอนสเตอร์ (Orbiting)
+                local timeNow = tick()
+                local radius = 12 -- รัศมีวงกลมรอบมอนสเตอร์
+                local speed = 3   -- ความเร็วในการหมุนวน
+                local angle = timeNow * speed
+                
+                local offsetX = math.cos(angle) * radius
+                local offsetZ = math.sin(angle) * radius
+                
+                local targetPos = targetHrp.Position
+                local orbitPos = targetPos + Vector3.new(offsetX, safeHeight, offsetZ)
+                
+                -- ให้ตัวละครเคลื่อนที่ไปตามวงกลม และหันหน้าเข้าหามอนสเตอร์ตลอดเวลา
+                hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
             else
                 isDodgingBoss = false
                 if tick() - lastFoundMonsterTime > 1.5 then
@@ -293,6 +299,7 @@ function startFarm()
                             if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                                 if cd.Value <= 0.1 then
                                     pressKey(tostring(slot.Value))
+                                    lastSkillText = tick()
                                     lastSkillTime = tick()
                                     return
                                 end
