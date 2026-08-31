@@ -1,16 +1,16 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "King's Castle"
-local selectedDifficulty = "Nightmare"
+local selectedMap = "The Underworld"
+local selectedDifficulty = "Insane"
 
 -- ตั้งค่าเพิ่มเติม
 local USE_NORMAL_ATTACK = true -- true = ใช้ตีธรรมดาด้วย, false = ใช้เฉพาะสกิล
 local AUTO_DODGE_ENABLED = true -- เปิด/ปิด ระบบออโต้หลบอัจฉริยะ
 
--- ตั้งค่าเงื่อนไขพิเศษสำหรับบอส (เช่น Demon Lord Azrallik)
+-- ตั้งค่าเงื่อนไขพิเศษสำหรับบอส (ปรับความสูงลงมาเหลือ 35 เพื่อให้ปล่อยสกิลโดนง่ายขึ้น)
 local BOSS_CONFIGURATIONS = {
     ["Demon Lord Azrallik"] = {
-        customHoverHeight = 160, -- ความสูงเวลารอคิว/สู้กับตัวนี้
+        customHoverHeight = 35, -- ลดความสูงลงมาให้อยู่ในระยะปล่อยสกิลโดน
         skipNormalAttack = false
     }
 }
@@ -202,7 +202,7 @@ function startFarm()
     local currentTargetModel = nil
     local lastFoundMonsterTime = tick()
 
-    -- ฟังก์ชันดึงพาร์ทหลักของมอนสเตอร์ รองรับทุกชื่อ (HumanoidRootPart, Torso, PrimaryPart ฯลฯ)
+    -- ฟังก์ชันดึงพาร์ทหลักของมอนสเตอร์ รองรับทุกชื่อ
     local function getMonsterRootPart(obj)
         local hrp = obj:FindFirstChild("HumanoidRootPart") 
             or obj:FindFirstChild("Torso") 
@@ -360,6 +360,7 @@ function startFarm()
                         escapeDir = Vector3.new(escapeDir.X, 0, escapeDir.Z).Unit
                         if escapeDir.Magnitude == 0 then escapeDir = Vector3.new(1, 0, 0) end
                         
+                        -- เมื่อหลบจะพุ่งออกด้านข้างและลอยขึ้นสูง 35 หน่วยเพื่อความปลอดภัย
                         dodgeShift = (escapeDir * 12) + Vector3.new(0, 35, 0)
                         break
                     end
@@ -401,7 +402,8 @@ function startFarm()
                 if isDanger then
                     safePos = targetPos + dodgeShift
                 else
-                    local hoverHeight = bossConfig and bossConfig.customHoverHeight or 90
+                    -- ปรับความสูงปกติลดลงเหลือ 25 (หรือตามค่า config) เพื่อให้ปล่อยสกิลโจมตีโดนเป้าหมายชัวร์ๆ
+                    local hoverHeight = bossConfig and bossConfig.customHoverHeight or 25
                     safePos = targetPos + Vector3.new(0, hoverHeight, 0)
                 end
 
