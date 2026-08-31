@@ -300,8 +300,8 @@ function startFarm()
 
                 local skillsReady, items = areSkillsReady()
                 
-                local safeHeight = 50 
-                local diveHeight = 20 
+                local safeHeight = 60 
+                local diveHeight = 25 
                 local currentHeight = safeHeight
                 
                 if (skillsReady or workspace:FindFirstChild("bossShot")) and not hasDealtDamage then
@@ -313,8 +313,8 @@ function startFarm()
                 end
 
                 local timeNow = tick()
-                local radius = 16 
-                local speed = 3   
+                local radius = 20 
+                local speed = 5   
                 local angle = timeNow * speed
                 
                 local offsetX = math.cos(angle) * radius
@@ -351,7 +351,7 @@ function startFarm()
                 end
 
                 -- ตรวจสอบว่าพยายามโจมตีเกิน 2.5 วินาทีแล้วเลือดไม่ลดหรือไม่
-                if attackAttemptTime and (tick() - attackAttemptTime > 2.5) then
+                if attackAttemptTime and (tick() - attackAttemptTime > 10) then
                     if initialTargetHealth and targetHum.Health >= initialTargetHealth then
                         -- เพิ่มเข้า Blacklist เป็นเวลา 15 วินาที เพื่อให้ระบบย้ายไปตีตัวอื่นก่อน
                         ignoredMonsters[currentTargetModel] = tick() + 15
