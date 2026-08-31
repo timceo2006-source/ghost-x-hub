@@ -123,7 +123,7 @@ toggleButton.MouseButton1Click:Connect(function()
     end
 end)
 
--- ==================== ระบบหลักของสคริปต์ (รวม Logic อัปเกรดใหม่) ====================
+-- ==================== ระบบหลักของสคริปต์ ====================
 
 task.spawn(function()
     pcall(function()
@@ -187,14 +187,22 @@ function startFarm()
     local lastFoundMonsterTime = tick()
     local initialTargetHealth = nil
     local hasDealtDamage = false
-    
-    -- ตัวแปรเช็คเลือดมอนสเตอร์ไม่ลด
-    local lastCheckHealthTime = tick()
-    local healthCheckInterval = 1.0  
-    local lastTrackedHealth = nil
+    local attackAttemptTime = nil
+    local ignoredMonsters = {} -- รายชื่อมอนสเตอร์ที่ข้ามชั่วคราว {[model] = tick() + duration}
+
+    local function isIgnored(model)
+        if ignoredMonsters[model] then
+            if tick() < ignoredMonsters[model] then
+                return true
+            else
+                ignoredMonsters[model] = nil -- หมดเวลาข้าม ปลดล็อกให้โจมตีได้ใหม่
+            end
+        end
+        return false
+    end
 
     local function getTarget()
-        if currentTargetModel and currentTargetModel.Parent then
+        if currentTargetModel and currentTargetModel.Parent and not isIgnored(currentTargetModel) then
             local hum = currentTargetModel:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
                 local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
@@ -208,10 +216,10 @@ function startFarm()
         currentTargetModel = nil
         initialTargetHealth = nil
         hasDealtDamage = false
-        lastTrackedHealth = nil
+        attackAttemptTime = nil
         
         for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) and not isIgnored(obj) then
                 local modelName = obj.Name
                 if modelName:find("_reyillsPreview") or modelName:find("Preview") then
                     continue
@@ -224,10 +232,8 @@ function startFarm()
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
                         currentTargetModel = obj
                         initialTargetHealth = hum.Health
-                        lastTrackedHealth = hum.Health
                         hasDealtDamage = false
-                        lastCheckHealthTime = tick()
-                        
+                        attackAttemptTime = nil
                         hrp.Size = Vector3.new(65, 65, 65)
                         hrp.Transparency = 0.8
                         hrp.CanCollide = false
@@ -292,18 +298,6 @@ function startFarm()
                     hasDealtDamage = true
                 end
 
-                -- เช็คถ้าตีไม่เข้า / เลือดไม่ลดภายใน 1 วินาที ให้เปลี่ยนเป้าหมายทันที
-                if tick() - lastCheckHealthTime >= healthCheckInterval then
-                    if hasDealtDamage == false and lastTrackedHealth and targetHum.Health >= lastTrackedHealth then
-                        currentTargetModel = nil
-                        initialTargetHealth = nil
-                        lastTrackedHealth = nil
-                        return
-                    end
-                    lastTrackedHealth = targetHum.Health
-                    lastCheckHealthTime = tick()
-                end
-
                 local skillsReady, items = areSkillsReady()
                 
                 local safeHeight = 50 
@@ -314,7 +308,7 @@ function startFarm()
                     currentHeight = diveHeight
                 else
                     if hasDealtDamage and skillsReady == false then
-                        hasDealtDamage = false 
+                        hasDealtDamage = false
                     end
                 end
 
@@ -331,7 +325,13 @@ function startFarm()
                 
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
 
+                -- เมื่อลงไปโจมตี
                 if currentHeight == diveHeight and skillsReady then
+                    if not attackAttemptTime then
+                        attackAttemptTime = tick()
+                        initialTargetHealth = targetHum.Health
+                    end
+
                     for _, item in ipairs(items) do
                         if item:IsA("Tool") then
                             local slot = item:FindFirstChild("abilitySlot")
@@ -349,10 +349,26 @@ function startFarm()
                         equippedTool:Activate()
                     end
                 end
+
+                -- ตรวจสอบว่าพยายามโจมตีเกิน 2.5 วินาทีแล้วเลือดไม่ลดหรือไม่
+                if attackAttemptTime and (tick() - attackAttemptTime > 2.5) then
+                    if initialTargetHealth and targetHum.Health >= initialTargetHealth then
+                        -- เพิ่มเข้า Blacklist เป็นเวลา 15 วินาที เพื่อให้ระบบย้ายไปตีตัวอื่นก่อน
+                        ignoredMonsters[currentTargetModel] = tick() + 15
+                        currentTargetModel = nil
+                        attackAttemptTime = nil
+                        hasDealtDamage = false
+                    else
+                        -- ถ้าเลือดลดปกติ ให้รีเซ็ตเวลาสำหรับเช็ครอบถัดไป
+                        attackAttemptTime = tick()
+                        initialTargetHealth = targetHum.Health
+                    end
+                end
+
             else
                 hasDealtDamage = false
                 initialTargetHealth = nil
-                lastTrackedHealth = nil
+                attackAttemptTime = nil
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
