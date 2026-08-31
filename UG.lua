@@ -1,13 +1,9 @@
 local TARGET_PLACE_ID = 77649408247578
 
-local selectedMap = "The Underworld"
+local selectedMap = "King's Castle"
 local selectedDifficulty = "Insane"
 
--- ตั้งค่าฮิตบ็อกซ์
-local HITBOX_RADIUS = 150
-local HITBOX_SIZE = Vector3.new(20, 20, 20)
-
--- ตั้งค่าเปิดใช้งานระบบ
+-- ตั้งค่าให้เปิดทั้งฟาร์มและออโต้สร้างห้องตั้งแต่เริ่มรันสคริปต์
 getgenv().AutoCreateAndStart = true
 getgenv().AutoFarmEnabled = true
 getgenv().DungeonFarmLoop = nil
@@ -21,7 +17,7 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
--- ==================== GUI (มุมขวาบน) ====================
+-- ==================== สร้าง GUI (มุมขวาบน) ====================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "DungeonFarmGui"
 screenGui.ResetOnSpawn = false
@@ -187,53 +183,28 @@ function startFarm()
 
     stopFarm()
 
-    local currentTargetModel = nil
+    local currentTarget = nil
+    local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
-    local isExecutingCombo = false
-
-    -- ความสูงสำหรับลอยนิ่งช่วงรอคูลดาวน์
-    local hoverHeights = {50, 60, 70}
-    local heightIndex = 1
-    local lastHeightChange = tick()
-    local currentDynamicHeight = hoverHeights[1]
-
-    local function expandNearbyHitboxes(playerHrp)
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                local modelName = obj.Name
-                if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
-                    local hum = obj:FindFirstChild("Humanoid")
-                    local hrp = obj:FindFirstChild("HumanoidRootPart")
-
-                    if hum and hrp and hum.Health > 0 then
-                        local distance = (hrp.Position - playerHrp.Position).Magnitude
-                        if distance <= HITBOX_RADIUS then
-                            hrp.Size = HITBOX_SIZE
-                            hrp.Transparency = 0.8
-                            hrp.CanCollide = false
-                        end
-                    end
-                end
-            end
-        end
-    end
+    local isDodgingBoss = false
 
     local function getTarget()
-        if currentTargetModel and currentTargetModel.Parent then
-            local hum = currentTargetModel:FindFirstChild("Humanoid")
+        if currentTarget and currentTarget.Parent then
+            local hum = currentTarget:FindFirstChild("Humanoid")
             if hum and hum.Health > 0 then
-                local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
+                local hrp = currentTarget:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     lastFoundMonsterTime = tick()
-                    return hrp, hum
+                    return hrp
                 end
             end
         end
 
-        currentTargetModel = nil
+        currentTarget = nil
         
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
+                -- 🛑 ระบบ Blacklist ป้องกันไม่ให้ล็อคพวกพรีวิว ตัวละครผู้เล่น หรือของแต่งที่ไม่ใช่มอนสเตอร์
                 local modelName = obj.Name
                 if modelName:find("_reyillsPreview") or modelName:find("Preview") then
                     continue
@@ -243,48 +214,19 @@ function startFarm()
                 local hrp = obj:FindFirstChild("HumanoidRootPart")
 
                 if hum and hrp and hum.Health > 0 then
+                    -- เช็คเพิ่มเติมว่ามี Head หรือลักษณะคล้ายมอนสเตอร์จริง
                     if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
-                        currentTargetModel = obj
+                        currentTarget = obj
+                        hrp.Size = Vector3.new(25, 25, 25)
+                        hrp.Transparency = 0.8
+                        hrp.CanCollide = false
                         lastFoundMonsterTime = tick()
-                        return hrp, hum
+                        return hrp
                     end
                 end
             end
         end
-        return nil, nil
-    end
-
-    local function checkSkillsReady()
-        local readyTools = {}
-        local totalSkills = 0
-        
-        local items = {}
-        if LocalPlayer:FindFirstChild("Backpack") then
-            for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
-        end
-        if LocalPlayer.Character then
-            for _, v in ipairs(LocalPlayer.Character:GetChildren()) do table.insert(items, v) end
-        end
-
-        for _, item in ipairs(items) do
-            if item:IsA("Tool") then
-                local slot = item:FindFirstChild("abilitySlot")
-                local cd = item:FindFirstChild("cooldown")
-                if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
-                    totalSkills = totalSkills + 1
-                    if cd.Value <= 0.1 then
-                        table.insert(readyTools, item)
-                    end
-                end
-            end
-        end
-
-        -- ต้องคูลดาวน์พร้อมใช้งานครบทั้ง 2 สกิล
-        local requiredCount = math.min(2, totalSkills)
-        if totalSkills > 0 and #readyTools >= requiredCount then
-            return true, readyTools
-        end
-        return false, {}
+        return nil
     end
 
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
@@ -302,95 +244,64 @@ function startFarm()
             end
             hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-            expandNearbyHitboxes(hrp)
-
-            local targetHrp, targetHum = getTarget()
-            if targetHrp and targetHum then
-                local isReady, readyTools = checkSkillsReady()
-
-                -- เริ่มคอมโบปล่อยสกิลเมื่อสกิลพร้อมครบทั้งคู่
-                if isReady and not isExecutingCombo then
-                    isExecutingCombo = true
-
-                    task.spawn(function()
-                        -- 1. ลงมาความสูงระดับโจมตี
-                        currentDynamicHeight = 20
-                        task.wait(0.12)
-
-                        -- 2. วนปล่อยทีละสกิล: กดย้ำๆ จนกว่าจะมั่นใจว่าสกิลนั้นกดติดจริง (คูลดาวน์เริ่มนับ > 0.2)
-                        for _, item in ipairs(readyTools) do
-                            local slot = item:FindFirstChild("abilitySlot")
-                            local cd = item:FindFirstChild("cooldown")
-
-                            if slot and slot:IsA("ValueBase") then
-                                local keyName = tostring(slot.Value)
-                                local startWait = tick()
-
-                                -- ลูปกดย้ำปุ่มไปเรื่อยๆ จนกว่าคูลดาวน์จะเริ่มนับถอยหลังจริง
-                                while cd and cd:IsA("ValueBase") and cd.Value <= 0.2 do
-                                    pressKey(keyName)
-                                    task.wait(0.06) -- กดย้ำถี่ขึ้นเพื่อดักจับจังหวะว่างของตัวละคร
-
-                                    -- ระบบป้องกันลูปค้าง (หากติดมึน/สตัดเกิน 2.5 วินาที ให้ข้ามไปสกิลถัดไป)
-                                    if (tick() - startWait) > 2.5 then
-                                        break
-                                    end
-                                end
-                                
-                                task.wait(0.15) -- เว้นช่วงให้แอนิเมชันสกิลแสดงผลเรียบร้อย
-                            end
-                        end
-
-                        -- 3. ตีธรรมดาปิดท้าย
-                        local currentChar = LocalPlayer.Character
-                        if currentChar then
-                            local equippedTool = currentChar:FindFirstChildOfClass("Tool")
-                            if equippedTool then
-                                equippedTool:Activate()
-                            end
-                        end
-
-                        -- 4. ค้างต่อเล็กน้อยให้วิถีกระสุน/เอฟเฟกต์ปล่อยออกพ้นตัว
-                        task.wait(0.25)
-
-                        -- 5. สกิลกดสำเร็จครบเรียบร้อย ปลดล็อกให้สคริปต์พากลับขึ้นที่สูง
-                        isExecutingCombo = false
-                    end)
-                end
-
-                local targetPos = targetHrp.Position
-                local orbitPos
-
-                if isExecutingCombo then
-                    -- ขณะปล่อยสกิล: ควงรอบตัวมอนสเตอร์ที่ระดับความสูง 20
-                    local timeNow = tick()
-                    local radius = 18 
-                    local speed = 4   
-                    local angle = timeNow * speed
-                    
-                    local offsetX = math.cos(angle) * radius
-                    local offsetZ = math.sin(angle) * radius
-                    orbitPos = targetPos + Vector3.new(offsetX, 20, offsetZ)
+            local targetHrp = getTarget()
+            if targetHrp then
+                local safeHeight = 30
+                if workspace:FindFirstChild("bossShot") then
+                    safeHeight = 50
+                    isDodgingBoss = true
                 else
-                    -- ขณะรอคูลดาวน์: ลอยนิ่ง และสลับความสูง 50, 60, 70 ทุก 1 วินาที
-                    if tick() - lastHeightChange >= 1 then
-                        heightIndex = (heightIndex % #hoverHeights) + 1
-                        currentDynamicHeight = hoverHeights[heightIndex]
-                        lastHeightChange = tick()
-                    end
-
-                    orbitPos = targetPos + Vector3.new(0, currentDynamicHeight, 0)
+                    isDodgingBoss = false
                 end
-
-                hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
-
+                local safePos = targetHrp.Position + Vector3.new(0, safeHeight, 0)
+                hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
             else
-                isExecutingCombo = false
+                isDodgingBoss = false
                 if tick() - lastFoundMonsterTime > 1.5 then
                     tryStartGame()
                 end
             end
         end)
+    end)
+
+    task.spawn(function()
+        while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
+            task.wait(0.05)
+            pcall(function()
+                local char = LocalPlayer.Character
+                if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
+
+                local targetHrp = getTarget()
+                if not targetHrp or isDodgingBoss then return end
+
+                if tick() - lastSkillTime > 0.15 then
+                    local items = {}
+                    if LocalPlayer:FindFirstChild("Backpack") then
+                        for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
+                    end
+                    for _, v in ipairs(char:GetChildren()) do table.insert(items, v) end
+
+                    for _, item in ipairs(items) do
+                        if item:IsA("Tool") then
+                            local slot = item:FindFirstChild("abilitySlot")
+                            local cd = item:FindFirstChild("cooldown")
+                            if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
+                                if cd.Value <= 0.1 then
+                                    pressKey(tostring(slot.Value))
+                                    lastSkillTime = tick()
+                                    return
+                                end
+                            end
+                        end
+                    end
+                end
+
+                local equippedTool = char:FindFirstChildOfClass("Tool")
+                if equippedTool then
+                    equippedTool:Activate()
+                end
+            end)
+        end
     end)
 end
 
