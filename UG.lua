@@ -184,9 +184,8 @@ function startFarm()
     stopFarm()
 
     local currentTarget = nil
-    local lastSkillTime = 0
     local lastFoundMonsterTime = tick()
-    local isDodgingBoss = false
+    local isDivingToAttack = false -- สถานะกำลังพุ่งลงไปปล่อยสกิล
 
     local function getTarget()
         if currentTarget and currentTarget.Parent then
@@ -227,6 +226,39 @@ function startFarm()
         return nil
     end
 
+    -- ฟังก์ชันเช็คว่าสกิลพร้อมใช้งาน (คูลดาวน์หมด) ครบตามเงื่อนไขไหม
+    local function areSkillsReady()
+        local readyCount = 0
+        local totalSkills = 0
+        
+        local items = {}
+        if LocalPlayer:FindFirstChild("Backpack") then
+            for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
+        end
+        if LocalPlayer.Character then
+            for _, v in ipairs(LocalPlayer.Character:GetChildren()) do table.insert(items, v) end
+        end
+
+        for _, item in ipairs(items) do
+            if item:IsA("Tool") then
+                local slot = item:FindFirstChild("abilitySlot")
+                local cd = item:FindFirstChild("cooldown")
+                if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
+                    totalSkills = totalSkills + 1
+                    if cd.Value <= 0.1 then
+                        readyCount = readyCount + 1
+                    end
+                end
+            end
+        end
+
+        -- ถ้ามีสกิลพร้อมตั้งแต่ 2 สกิลขึ้นไป (หรือตามที่มี) ให้ถือว่าพร้อมปล่อย
+        if totalSkills > 0 and readyCount >= math.min(2, totalSkills) then
+            return true, items
+        end
+        return false, items
+    end
+
     getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
         if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
 
@@ -244,18 +276,21 @@ function startFarm()
 
             local targetHrp = getTarget()
             if targetHrp then
-                local safeHeight = 18
-                if workspace:FindFirstChild("bossShot") then
-                    safeHeight = 45
-                    isDodgingBoss = true
+                -- เช็คสถานะสกิลเพื่อเลือกระดับความสูง
+                local skillsReady, items = areSkillsReady()
+                
+                local safeHeight = 50 -- ความสูงตอนบินวนรอคูลดาวน์
+                if skillsReady or workspace:FindFirstChild("bossShot") then
+                    safeHeight = 10 -- ความสูงตอนพุ่งลงไปปล่อยสกิล (หรือหลบสกิลบอส)
+                    isDivingToAttack = true
                 else
-                    isDodgingBoss = false
+                    isDivingToAttack = false
                 end
 
-                -- คำนวณตำแหน่งวนรอบตัวมอนสเตอร์ (Orbiting)
+                -- คำนวณตำแหน่งหมุนวนรอบมอนสเตอร์ (Orbiting) ทั้งตอนสูงและตอนลง
                 local timeNow = tick()
-                local radius = 12 -- รัศมีวงกลมรอบมอนสเตอร์
-                local speed = 3   -- ความเร็วในการหมุนวน
+                local radius = 12 
+                local speed = 3   
                 local angle = timeNow * speed
                 
                 local offsetX = math.cos(angle) * radius
@@ -264,34 +299,11 @@ function startFarm()
                 local targetPos = targetHrp.Position
                 local orbitPos = targetPos + Vector3.new(offsetX, safeHeight, offsetZ)
                 
-                -- ให้ตัวละครเคลื่อนที่ไปตามวงกลม และหันหน้าเข้าหามอนสเตอร์ตลอดเวลา
+                -- เคลื่อนที่ตามวงกลมและหันหน้าเข้าหามอนสเตอร์ตลอดเวลา
                 hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
-            else
-                isDodgingBoss = false
-                if tick() - lastFoundMonsterTime > 1.5 then
-                    tryStartGame()
-                end
-            end
-        end)
-    end)
 
-    task.spawn(function()
-        while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
-            task.wait(0.05)
-            pcall(function()
-                local char = LocalPlayer.Character
-                if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
-
-                local targetHrp = getTarget()
-                if not targetHrp or isDodgingBoss then return end
-
-                if tick() - lastSkillTime > 0.15 then
-                    local items = {}
-                    if LocalPlayer:FindFirstChild("Backpack") then
-                        for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
-                    end
-                    for _, v in ipairs(char:GetChildren()) do table.insert(items, v) end
-
+                -- ถ้าอยู่ในระยะพุ่งลงมาแล้ว สกิลพร้อม ให้กดปล่อยสกิลทันที
+                if isDivingToAttack and skillsReady then
                     for _, item in ipairs(items) do
                         if item:IsA("Tool") then
                             local slot = item:FindFirstChild("abilitySlot")
@@ -299,21 +311,24 @@ function startFarm()
                             if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
                                 if cd.Value <= 0.1 then
                                     pressKey(tostring(slot.Value))
-                                    lastSkillText = tick()
-                                    lastSkillTime = tick()
-                                    return
+                                    task.wait(0.05) -- หน่วงเวลาเล็กน้อยระหว่างกดสกิลคู่กัน
                                 end
                             end
                         end
                     end
+                    -- ใช้การโจมตีปกติร่วมด้วยตอนอยู่ใกล้
+                    local equippedTool = char:FindFirstChildOfClass("Tool")
+                    if equippedTool then
+                        equippedTool:Activate()
+                    end
                 end
-
-                local equippedTool = char:FindFirstChildOfClass("Tool")
-                if equippedTool then
-                    equippedTool:Activate()
+            else
+                isDivingToAttack = false
+                if tick() - lastFoundMonsterTime > 1.5 then
+                    tryStartGame()
                 end
-            end)
-        end
+            end
+        end)
     end)
 end
 
