@@ -62,8 +62,7 @@ statusLabel.Parent = mainFrame
 
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(0.9, 0, 0, 38)
-toggleButton.Position = UDim2.,new(0.05, 0, 0.52, 0) -- Fixed comma syntax issue below properly
-toggleButton.Position = UDim2.new(0.05, 0, 0.52, 0)
+toggleButton.Position = UDim2.new(0.05, 0, 0.52, 0) -- แก้ไขเครื่องหมายคอมม่าเกินตรงนี้
 toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.TextSize = 14
@@ -159,8 +158,9 @@ local function getSkillCooldownStatus()
 end
 
 function stopFarm()
+    getgenv().AutoFarmEnabled = false
     if getgenv().DungeonFarmLoop then
-        getgenv().DungeonFarmLoop:Disconnect()
+        task.cancel(getgenv().DungeonFarmLoop)
         getgenv().DungeonFarmLoop = nil
     end
 end
@@ -168,6 +168,7 @@ end
 function startFarm()
     if game.PlaceId == TARGET_PLACE_ID then return end
     stopFarm()
+    getgenv().AutoFarmEnabled = true
 
     local currentTarget = nil
 
@@ -220,7 +221,6 @@ function startFarm()
             if conn then conn:Disconnect() end
         end)
 
-        -- รอจนกว่าจะ Tween เสร็จหรือเป้าหมายเปลี่ยน
         local startTime = tick()
         while not completed and tick() - startTime < (duration + 1) do
             task.wait(0.05)
@@ -246,11 +246,11 @@ function startFarm()
                 if targetHrp and targetHum then
                     statusLabel.Text = "Triggering Monster Movement..."
                     
-                    -- 1. วนรอบตัวมอนสเตอร์เป็นมุมสี่เหลี่ยม (หน้า 10, ข้าง 5) เพื่อกระตุ้นระบบฟิสิกส์และการเคลื่อนที่ของมอน
+                    -- 1. วนรอบตัวมอนสเตอร์เป็นมุมสี่เหลี่ยม (หน้า 10, ข้าง 5) เพื่อกระตุ้นระบบฟิสิกส์
                     local offsets = {
-                        targetHrp.CFrame * CFrame.new(0, 0, -10), -- ด้านหน้า
-                        targetHrp.CFrame * CFrame.new(5, 0, 0),   -- ด้านขวา
-                        targetHrp.CFrame * CFrame.new(-5, 0, 0),  -- ด้านซ้าย
+                        targetHrp.CFrame * CFrame.new(0, 0, -10),
+                        targetHrp.CFrame * CFrame.new(5, 0, 0),
+                        targetHrp.CFrame * CFrame.new(-5, 0, 0),
                     }
 
                     for _, posCFrame in ipairs(offsets) do
@@ -259,18 +259,15 @@ function startFarm()
                         task.wait(0.2)
                     end
 
-                    -- เช็กให้แน่ใจว่ามอนสเตอร์เคลื่อนที่หรือมีการขยับตัวแล้ว
                     statusLabel.Text = "Waiting for Monster Move..."
-                    local oldPos = targetHrp.Position
                     task.wait(0.3)
                     
-                    -- 2. เมื่อมอนขยับ/พร้อมแล้ว วาร์ปขึ้นไปบนหัวมอนสเตอร์ (0, 25, 0)
+                    -- 2. วาร์ปขึ้นไปบนหัวมอน스터 (0, 25, 0)
                     statusLabel.Text = "Attacking from Above..."
                     hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 25, 0)
                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
                     -- 3. ลูปเช็กคูลดาวน์และปล่อยสกิล Q และ E
-                    local attackTimeout = tick()
                     while targetHum and targetHum.Health > 0 and getgenv().AutoFarmEnabled do
                         local qReady, eReady = getSkillCooldownStatus()
 
@@ -284,7 +281,7 @@ function startFarm()
                                 task.wait(0.1)
                             end
                         else
-                            -- ถ้าสกิลติดคูลดาวน์ ให้สลับขึ้นไปรอพักคูลดาวน์ที่ความสูงสลับกัน (50, 80, 130)
+                            -- สลับขึ้นไปรอพักคูลดาวน์ที่ความสูง (50, 80, 130)
                             local heights = {50, 80, 130}
                             for _, h in ipairs(heights) do
                                 if targetHrp and targetHrp.Parent then
@@ -292,7 +289,6 @@ function startFarm()
                                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                                 end
                                 
-                                -- เช็กคูลดาวน์ระหว่างรอ
                                 local waitStart = tick()
                                 while tick() - waitStart < 1.5 do
                                     local qCheck, eCheck = getSkillCooldownStatus()
@@ -300,7 +296,6 @@ function startFarm()
                                     task.wait(0.2)
                                 end
 
-                                -- เช็กว่าสกิลพร้อมหรือยัง ถ้าพร้อมให้ลงไปปล่อยสกิลที่ (0, 25, 0)
                                 local qCheck, eCheck = getSkillCooldownStatus()
                                 if qCheck or eCheck then
                                     if targetHrp and targetHrp.Parent then
@@ -311,7 +306,6 @@ function startFarm()
                             end
                         end
 
-                        -- ป้องกันลูปค้างหากมอนตายหรือเลือดหมด
                         if targetHum.Health <= 0 or not targetHrp.Parent then
                             break
                         end
