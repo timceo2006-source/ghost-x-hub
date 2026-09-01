@@ -14,7 +14,6 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local TeleportService = game:GetService("TeleportService")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 -- ==================== GUI (มุมขวาบน) ====================
@@ -44,7 +43,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Clean Auto Farm (Tween)"
+titleLabel.Text = "Clean Auto Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -142,16 +141,8 @@ function startFarm()
 
     local currentTarget = nil
     local lastMonsterTime = tick()
-    local farmState = "UP_50"
-    local currentTween = nil
 
-    local function cancelTween()
-        if currentTween then
-            currentTween:Cancel()
-            currentTween = nil
-        end
-    end
-
+    -- ค้นหามอนสเตอร์ที่ยังมีชีวิต
     local function getTarget()
         if currentTarget and currentTarget.Parent then
             local hum = currentTarget:FindFirstChild("Humanoid")
@@ -179,6 +170,7 @@ function startFarm()
         return nil, nil
     end
 
+    -- เช็กสถานะคูลดาวน์สกิล Q
     local function isSkillReady()
         local items = {}
         if LocalPlayer:FindFirstChild("Backpack") then
@@ -214,80 +206,23 @@ function startFarm()
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                local currentY = hrp.Position.Y
+                -- ลอยตัวเหนือหัวมอนสเตอร์เล็กน้อยแบบปลอดภัย (ระยะสูง 15 หน่วย) มองลงมาที่มอน
+                local hoverPos = targetHrp.Position + Vector3.new(0, 15, 0)
+                hrp.CFrame = CFrame.lookAt(hoverPos, targetHrp.Position)
 
-                -- สเต็ป 1: ลอยตัวขึ้นไปรอที่ Y = 50 แบบสมูท
-                if farmState == "UP_50" then
-                    cancelTween()
-                    local safePos = Vector3.new(targetHrp.Position.X, targetHrp.Position.Y + 50, targetHrp.Position.Z)
-                    hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
-                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                -- เทคนิคหลอกระบบเกม: เซ็ตความเร็วเป็น 0 เพื่อไม่ให้ตัวละครสะบัด แต่คงสถานะฟิสิกส์ปกติ
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-                    if isSkillReady() then
-                        farmState = "DOWN_30"
-                    end
-
-                -- สเต็ป 2: ใช้ Tween ทิ้งตัวลงมาที่ Y = 30 อย่างนุ่มนวล
-                elseif farmState == "DOWN_30" then
-                    if not currentTween or currentTween.PlaybackState ~= Enum.PlaybackState.Playing then
-                        local dropPos = Vector3.new(targetHrp.Position.X, targetHrp.Position.Y + 30, targetHrp.Position.Z)
-                        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-                        currentTween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.lookAt(dropPos, targetHrp.Position)})
-                        currentTween:Play()
-                    end
-
-                    -- กดสกิล Q เมื่อถึงจังหวะ
-                    if isSkillReady() then
-                        pressKey("Q")
-                        task.wait(0.04)
-                    end
-
-                    local equippedTool = char:FindFirstChildOfClass("Tool")
-                    if equippedTool then
-                        equippedTool:Activate()
-                    end
-
-                    if currentY <= 28 then
-                        cancelTween()
-                        farmState = "FIGHT_15"
-                    end
-
-                -- สเต็ป 3: ไหลลงต่อมาถึง Y = 15 พร้อมโจมตีซ้ำ
-                elseif farmState == "FIGHT_15" then
-                    if not currentTween or currentTween.PlaybackState ~= Enum.PlaybackState.Playing then
-                        local fightPos = Vector3.new(targetHrp.Position.X, targetHrp.Position.Y + 15, targetHrp.Position.Z)
-                        local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-                        currentTween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.lookAt(fightPos, targetHrp.Position)})
-                        currentTween:Play()
-                    end
-
-                    local equippedTool = char:FindFirstChildOfClass("Tool")
-                    if equippedTool then
-                        equippedTool:Activate()
-                    end
-
-                    -- ถ้าลงมาต่ำกว่าหรือเท่ากับ Y = 15 ให้ Tween เด้งกลับขึ้นไปข้างบนทันที
-                    if currentY <= 15 then
-                        cancelTween()
-                        farmState = "RESET_UP"
-                    end
-
-                -- สเต็ป 4: Tween เด้งกลับขึ้นไปรอคูลดาวน์ที่ Y = 50
-                elseif farmState == "RESET_UP" then
-                    if not currentTween or currentTween.PlaybackState ~= Enum.PlaybackState.Playing then
-                        local resetPos = Vector3.new(targetHrp.Position.X, targetHrp.Position.Y + 50, targetHrp.Position.Z)
-                        local tweenInfo = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                        currentTween = TweenService:Create(hrp, tweenInfo, {CFrame = CFrame.lookAt(resetPos, targetHrp.Position)})
-                        currentTween:Play()
-                        
-                        task.wait(0.3)
-                        cancelTween()
-                        farmState = "UP_50"
-                    end
+                -- ถือโอกาสกดสกิล Q เมื่อพร้อม
+                if isSkillReady() then
+                    -- จำลองกระโดดสั้นๆ หรือสั่งให้ Humanoid อยู่ในสถานะปล่อยสกิลบนพื้น
+                    humanoid.Jump = true
+                    task.wait(0.05)
+                    pressKey("Q")
+                    task.wait(0.3)
                 end
             else
-                cancelTween()
-                farmState = "UP_50"
+                -- ถ้าหามอนไม่เจอเกิน 1.5 วินาที ให้วิ่งสแตนด์บายรอ
                 if tick() - lastMonsterTime > 1.5 then
                     pcall(function()
                         local remotes = ReplicatedStorage:FindFirstChild("remotes")
@@ -337,6 +272,7 @@ task.spawn(function()
             else
                 statusLabel.Text = "In Dungeon / Farming"
                 
+                -- หน่วงรอ 5 วินาทีก่อนเริ่มฟาร์มหากยังไม่พบมอนสเตอร์ในแมพ
                 local checkTimer = tick()
                 while game.PlaceId ~= TARGET_PLACE_ID and getgenv().AutoCreateAndStart do
                     local _, hum = (function()
