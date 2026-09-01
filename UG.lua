@@ -142,7 +142,7 @@ local function pressKey(keyStr)
         task.spawn(function()
             pcall(function()
                 VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-                task.wait(0.05)
+                task.wait(0.04)
                 VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
             end)
         end)
@@ -219,38 +219,11 @@ function startFarm()
         return nil, nil
     end
 
-    -- ฟังก์ชัน Tween แบบบินเร็ว + ล็อคความสูง
-    local function smoothTweenTo(targetCFrame, speed)
-        local char = LocalPlayer.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-
-        speed = speed or 180 -- ปรับสปีดเริ่มต้นเพิ่มเป็น 180 (จากเดิม 16)
-        local distance = (hrp.Position - targetCFrame.Position).Magnitude
-        local duration = distance / speed
-        if duration < 0.02 then duration = 0.02 end
-
-        local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
-        local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
-        tween:Play()
-        
-        local completed = false
-        local conn
-        conn = tween.Completed:Connect(function()
-            completed = true
-            if conn then conn:Disconnect() end
-        end)
-
-        local startTime = tick()
-        while not completed and tick() - startTime < (duration + 0.3) do
-            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0) -- ตรึงตัวละครไม่ให้ร่วง
-            task.wait(0.02)
-        end
-    end
-
     -- ลูปหลักในการฟาร์ม
     getgenv().DungeonFarmLoop = task.spawn(function()
+        local FLY_HEIGHT = 20    -- ความสูงลอยฟ้าเหนือมอนสเตอร์ (20 หน่วย)
+        local CIRCLE_RADIUS = 12 -- รัศมีวงกลมขณะวน
+
         while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             pcall(function()
                 local char = LocalPlayer.Character
@@ -266,38 +239,48 @@ function startFarm()
 
                 local targetHrp, targetHum = getTarget()
                 if targetHrp and targetHum then
-                    statusLabel.Text = "Flying High to Target..."
+                    statusLabel.Text = "Circling Above Monster..."
                     
-                    -- สร้างความสูงสำหรับบินหลบมอนสเตอร์ (+40 หน่วยจากพื้นมอน)
-                    local flyHeight = Vector3.new(0, 40, 0)
+                    local angle = 0
+                    local startTime = tick()
+                    
+                    -- หมุนวนวาร์ปเป็นวงกลมบนหัวมอนสูง 20 หน่วย จนกว่ามอนสเตอร์จะเดินขยับตัว
+                    while getgenv().AutoFarmEnabled and targetHrp and targetHrp.Parent and targetHum and targetHum.Health > 0 do
+                        -- ตรวจสอบว่ามอนสเตอร์เคลื่อนที่แล้วหรือยัง
+                        local isMoving = targetHrp.AssemblyLinearVelocity.Magnitude > 0.5 or targetHum.MoveVelocity.Magnitude > 0.5
+                        if isMoving or (tick() - startTime > 2.5) then
+                            break
+                        end
 
-                    local offsets = {
-                        (targetHrp.CFrame * CFrame.new(0, 0, -10)) + flyHeight,
-                        (targetHrp.CFrame * CFrame.new(5, 0, 0)) + flyHeight,
-                        (targetHrp.CFrame * CFrame.new(-5, 0, 0)) + flyHeight,
-                    }
-
-                    -- บินด้วยความเร็ว 180 เหนือหัวมอนสเตอร์
-                    for _, posCFrame in ipairs(offsets) do
-                        if not targetHrp or not targetHrp.Parent then break end
-                        smoothTweenTo(posCFrame, 180)
-                        task.wait(0.03)
+                        -- คำนวณพิกัดวงกลมแบบเรียลไทม์
+                        angle = angle + math.rad(36)
+                        local offset = Vector3.new(math.cos(angle) * CIRCLE_RADIUS, FLY_HEIGHT, math.sin(angle) * CIRCLE_RADIUS)
+                        
+                        -- วาร์ปแบบทันทีลอยสูง +20 หน่วย
+                        hrp.CFrame = CFrame.new(targetHrp.Position + offset, targetHrp.Position)
+                        hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        
+                        task.wait(0.02)
                     end
-                    
-                    statusLabel.Text = "Attacking from Above..."
-                    -- อยู่สูงจากหัวมอนสเตอร์ 30 หน่วยเพื่อความปลอดภัยขณะโจมตี
-                    hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 30, 0)
+
+                    statusLabel.Text = "Attacking..."
+                    -- วาร์ปไปตำแหน่งบนหัวมอนสูง 20 หน่วยเพื่อโจมตี
+                    hrp.CFrame = targetHrp.CFrame + Vector3.new(0, FLY_HEIGHT, 0)
                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
                     while targetHum and targetHum.Health > 0 and getgenv().AutoFarmEnabled do
                         local qReady, eReady = getSkillCooldownStatus()
 
                         if qReady or eReady then
-                            if qReady then pressKey("Q") task.wait(0.05) end
-                            if eReady then pressKey("E") task.wait(0.05) end
+                            -- อยู่สูง +20 ขณะปล่อยสกิล
+                            hrp.CFrame = targetHrp.CFrame + Vector3.new(0, FLY_HEIGHT, 0)
+                            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+
+                            if qReady then pressKey("Q") task.wait(0.04) end
+                            if eReady then pressKey("E") task.wait(0.04) end
                         else
-                            -- สลับขึ้นไปลอยสูงพักคูลดาวน์ (60, 90, 140)
-                            local heights = {60, 90, 140}
+                            -- สลับลอยขึ้นสูงพักคูลดาวน์ (สูงขึ้นเป็น 40, 60, 90 หน่วย)
+                            local heights = {40, 60, 90}
                             for _, h in ipairs(heights) do
                                 if targetHrp and targetHrp.Parent then
                                     hrp.CFrame = targetHrp.CFrame + Vector3.new(0, h, 0)
@@ -305,16 +288,16 @@ function startFarm()
                                 end
                                 
                                 local waitStart = tick()
-                                while tick() - waitStart < 1.2 do
+                                while tick() - waitStart < 1.0 do
                                     local qCheck, eCheck = getSkillCooldownStatus()
                                     if qCheck or eCheck then break end
-                                    task.wait(0.15)
+                                    task.wait(0.1)
                                 end
 
                                 local qCheck, eCheck = getSkillCooldownStatus()
                                 if qCheck or eCheck then
                                     if targetHrp and targetHrp.Parent then
-                                        hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 30, 0)
+                                        hrp.CFrame = targetHrp.CFrame + Vector3.new(0, FLY_HEIGHT, 0)
                                     end
                                     break
                                 end
@@ -324,7 +307,7 @@ function startFarm()
                         if targetHum.Health <= 0 or not targetHrp.Parent then
                             break
                         end
-                        task.wait(0.05)
+                        task.wait(0.03)
                     end
                 else
                     statusLabel.Text = "Searching for Monsters..."
@@ -337,7 +320,7 @@ function startFarm()
                     task.wait(0.5)
                 end
             end)
-            task.wait(0.05)
+            task.wait(0.03)
         end
     end)
 end
