@@ -43,7 +43,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Clean Auto Farm (Anti-Cheat)"
+titleLabel.Text = "Clean Auto Farm (Y-Level)"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -141,8 +141,7 @@ function startFarm()
 
     local currentTarget = nil
     local lastMonsterTime = tick()
-    local farmState = "HOVER" -- HOVER (รอ/ลอยบนฟ้า) หรือ DROP (ทิ้งตัวลงมาตี)
-    local stateTimer = tick()
+    local farmState = "UP_50" -- สถานะเริ่มต้น: ขึ้นไปรอที่ Y: 50
 
     -- ค้นหามอนสเตอร์ที่ยังมีชีวิต
     local function getTarget()
@@ -208,47 +207,51 @@ function startFarm()
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                local dist = (hrp.Position - targetHrp.Position).Magnitude
+                local currentY = hrp.Position.Y
 
-                -- สลับสถานะตามเวลาและความเหมาะสม เพื่อหลบ Anti-Cheat แบบ Drop-Hit
-                if farmState == "HOVER" then
-                    -- ลอยตัวเตรียมพร้อมบนหัวมอนสเตอร์ (ระยะสูง 14 หน่วย)
-                    local hoverPos = targetHrp.Position + Vector3.new(0, 14, 0)
-                    hrp.CFrame = CFrame.lookAt(hoverPos, targetHrp.Position)
+                -- สเต็ปที่ 1: ขึ้นไปรอความสูง Y = 50 เพื่อซ่อนตัว/ปิดการตรวจจับจาก Anti-Cheat
+                if farmState == "UP_50" then
+                    local safePos = Vector3.new(targetHrp.Position.X, targetHrp.Position.Y + 50, targetHrp.Position.Z)
+                    hrp.CFrame = CFrame.lookAt(safePos, targetHrp.Position)
                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-                    -- ถ้าสกิลพร้อม หรือทิ้งช่วงครบ 1.5 วินาที ให้เปลี่ยนเป็นโหมดทิ้งตัวลงมาตี
-                    if isSkillReady() or (tick() - stateTimer > 1.5) then
-                        farmState = "DROP"
-                        stateTimer = tick()
+                    -- ถ้าสกิลพร้อม ให้เริ่มสเต็ปทิ้งตัวลงมา
+                    if isSkillReady() then
+                        farmState = "DOWN_30"
                     end
 
-                elseif farmState == "DROP" then
-                    -- วาร์ปหรือเคลื่อนที่ลงมาใกล้ระดับพื้น/ตัวมอนสเตอร์เพื่อให้ฟิสิกส์ทำงานตามธรรมชาติ
-                    local dropPos = targetHrp.Position + Vector3.new(0, 3, 0)
+                -- สเต็ปที่ 2: ลงมาที่ความสูง Y = 30 เพื่อเตรียมหามอนและปล่อยสกิลลงด้านล่าง
+                elseif farmState == "DOWN_30" then
+                    local dropPos = Vector3.new(targetHrp.Position.X, targetHrp.Position.Y + 30, targetHrp.Position.Z)
                     hrp.CFrame = CFrame.lookAt(dropPos, targetHrp.Position)
-                    
-                    -- ปล่อยสกิลทันทีที่ตกลงมาถึงระยะ
+
+                    -- ปล่อยสกิล Q ลงด้านล่าง
                     if isSkillReady() then
                         pressKey("Q")
-                        task.wait(0.1)
+                        task.wait(0.05)
                     end
 
-                    -- สับปะกาศโจมตีปกติด้วย Tool
+                    -- โจมตีปกติเสริม
                     local equippedTool = char:FindFirstChildOfClass("Tool")
                     if equippedTool then
                         equippedTool:Activate()
                     end
 
-                    -- ผ่านไป 0.6 วินาที (ปล่อยให้ตกลงมาตีเสร็จ) ให้เด้งกลับขึ้นไปโหมด HOVER เพื่อหลบสกิลบอส
-                    if tick() - stateTimer > 0.6 then
-                        farmState = "HOVER"
-                        stateTimer = tick()
+                    -- ถ้าตัวละครตกลงมาถึงระดับความสูง Y <= 15 ให้เปลี่ยนสถานะเพื่อวาปกลับขึ้นไป
+                    if currentY <= 15 then
+                        farmState = "RESET_BACK"
                     end
+
+                -- สเต็ปที่ 3: เมื่อถึง Y = 15 ให้วาปเด้งกลับขึ้นไปรอ Y = 50 เพื่อคูลดาวน์
+                elseif farmState == "RESET_BACK" then
+                    local resetPos = Vector3.new(targetHrp.Position.X, targetHrp.Position.Y + 50, targetHrp.Position.Z)
+                    hrp.CFrame = CFrame.lookAt(resetPos, targetHrp.Position)
+                    task.wait(0.1)
+                    farmState = "UP_50"
                 end
             else
-                -- ถ้าหามอนไม่เจอ ให้วิ่งสแตนด์บายรอหรือเคลียร์ลูป
-                farmState = "HOVER"
+                -- ถ้าหามอนไม่เจอ ให้รีเซ็ตกลับไปตั้งหลักที่ Y = 50
+                farmState = "UP_50"
                 if tick() - lastMonsterTime > 1.5 then
                     pcall(function()
                         local remotes = ReplicatedStorage:FindFirstChild("remotes")
