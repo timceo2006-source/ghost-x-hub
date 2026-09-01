@@ -44,7 +44,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Clean Auto Farm"
+titleLabel.Text = "Anti-Cheat Safe Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -62,7 +62,7 @@ statusLabel.Parent = mainFrame
 
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(0.9, 0, 0, 38)
-toggleButton.Position = UDim2.new(0.05, 0, 0.52, 0) -- แก้ไขเครื่องหมายคอมม่าเกินตรงนี้
+toggleButton.Position = UDim2.new(0.05, 0, 0.52, 0)
 toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.TextSize = 14
@@ -172,7 +172,6 @@ function startFarm()
 
     local currentTarget = nil
 
-    -- ค้นหามอนสเตอร์ที่ยังมีชีวิต
     local function getTarget()
         if currentTarget and currentTarget.Parent then
             local hum = currentTarget:FindFirstChild("Humanoid")
@@ -198,17 +197,17 @@ function startFarm()
         return nil, nil
     end
 
-    -- ฟังก์ชัน Tween ตัวละครไปยังตำแหน่งที่ต้องการแบบนุ่มนวลหลบ Anti-Cheat
+    -- ฟังก์ชัน Smooth Tween หลบ Anti-Cheat (ป้องกันการวาร์ปกระชากที่ทำให้โดนเตะ)
     local function smoothTweenTo(targetCFrame, speed)
         local char = LocalPlayer.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        speed = speed or 16
+        speed = speed or 25
         local distance = (hrp.Position - targetCFrame.Position).Magnitude
         local duration = distance / speed
-        if duration < 0.05 then duration = 0.05 end
+        if duration < 0.04 then duration = 0.04 end
 
         local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
         local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
@@ -222,12 +221,27 @@ function startFarm()
         end)
 
         local startTime = tick()
-        while not completed and tick() - startTime < (duration + 1) do
-            task.wait(0.05)
+        while not completed and tick() - startTime < (duration + 0.5) do
+            task.wait(0.02)
         end
     end
 
-    -- ลูปหลักในการฟาร์มตามระบบใหม่
+    -- ฟังก์ชันตรวจสอบสกิล/ฮิตบ็อกซ์อันตรายรอบตัวเพื่อหลบหลีกแอนตี้ชีสและสกิลบอส
+    local function isAreaSafe(pos)
+        local dungeon = workspace:FindFirstChild("dungeon") or workspace
+        for _, obj in ipairs(dungeon:GetDescendants()) do
+            if obj:IsA("BasePart") and obj.Transparency < 0.9 then
+                local name = string.lower(obj.Name)
+                if string.find(name, "warn") or string.find(name, "skill") or string.find(name, "hitbox") or string.find(name, "spike") or string.find(name, "rock") then
+                    if (obj.Position - pos).Magnitude < 7 then
+                        return false
+                    end
+                end
+            end
+        end
+        return true
+    end
+
     getgenv().DungeonFarmLoop = task.spawn(function()
         while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             pcall(function()
@@ -242,78 +256,70 @@ function startFarm()
                     return 
                 end
 
+                -- ปิดการชนกับวัตถุชั่วคราวเพื่อไม่ให้ติดกำแพงเวลา Tween
+                for _, part in ipairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+
                 local targetHrp, targetHum = getTarget()
                 if targetHrp and targetHum then
-                    statusLabel.Text = "Triggering Monster Movement..."
+                    statusLabel.Text = "Moving to Monster..."
                     
-                    -- 1. วนรอบตัวมอนสเตอร์เป็นมุมสี่เหลี่ยม (หน้า 10, ข้าง 5) เพื่อกระตุ้นระบบฟิสิกส์
-                    local offsets = {
-                        targetHrp.CFrame * CFrame.new(0, 0, -10),
-                        targetHrp.CFrame * CFrame.new(5, 0, 0),
-                        targetHrp.CFrame * CFrame.new(-5, 0, 0),
-                    }
+                    -- ใช้ Tween เข้าหาเพื่อป้องกัน Anti-Cheat ตรวจจับการวาป (Teleport Check)
+                    local hoverTarget = targetHrp.CFrame + Vector3.new(0, 20, 0)
+                    smoothTweenTo(hoverTarget, 35)
 
-                    for _, posCFrame in ipairs(offsets) do
-                        if not targetHrp or not targetHrp.Parent then break end
-                        smoothTweenTo(posCFrame, 20)
-                        task.wait(0.2)
-                    end
-
-                    statusLabel.Text = "Waiting for Monster Move..."
-                    task.wait(0.3)
-                    
-                    -- 2. วาร์ปขึ้นไปบนหัวมอน스터 (0, 25, 0)
-                    statusLabel.Text = "Attacking from Above..."
-                    hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 25, 0)
-                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-
-                    -- 3. ลูปเช็กคูลดาวน์และปล่อยสกิล Q และ E
+                    -- ลูปต่อสู้และเช็กหลบสกิล
                     while targetHum and targetHum.Health > 0 and getgenv().AutoFarmEnabled do
-                        local qReady, eReady = getSkillCooldownStatus()
+                        if not targetHrp or not targetHrp.Parent then break end
 
+                        -- ตรวจสอบว่ามีสกิลพุ่งขึ้นมาใกล้ตัวไหม ถ้ามีให้ขยับหลบขึ้นที่สูงทันที
+                        local currentPos = hrp.Position
+                        if not isAreaSafe(currentPos) then
+                            statusLabel.Text = "Evading Skill!"
+                            local safeEvasionPos = targetHrp.CFrame + Vector3.new(0, 45, 0)
+                            smoothTweenTo(safeEvasionPos, 50)
+                            task.wait(0.5)
+                        else
+                            -- คงตำแหน่งเกาะหัวเพื่อตี
+                            hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 20, 0)
+                            hrp.AssemblyLinearVelocity = Vector3.zero
+                        end
+
+                        local qReady, eReady = getSkillCooldownStatus()
                         if qReady or eReady then
                             if qReady then
                                 pressKey("Q")
-                                task.wait(0.1)
+                                task.wait(0.08)
                             end
                             if eReady then
                                 pressKey("E")
-                                task.wait(0.1)
+                                task.wait(0.08)
                             end
                         else
-                            -- สลับขึ้นไปรอพักคูลดาวน์ที่ความสูง (50, 80, 130)
-                            local heights = {50, 80, 130}
+                            -- พักคูลดาวน์บนที่สูงปลอดภัย
+                            local heights = {40, 70, 100}
                             for _, h in ipairs(heights) do
                                 if targetHrp and targetHrp.Parent then
-                                    hrp.CFrame = targetHrp.CFrame + Vector3.new(0, h, 0)
-                                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                                    smoothTweenTo(targetHrp.CFrame + Vector3.new(0, h, 0), 30)
                                 end
                                 
                                 local waitStart = tick()
-                                while tick() - waitStart < 1.5 do
+                                while tick() - waitStart < 1.2 do
                                     local qCheck, eCheck = getSkillCooldownStatus()
                                     if qCheck or eCheck then break end
-                                    task.wait(0.2)
+                                    task.wait(0.1)
                                 end
 
                                 local qCheck, eCheck = getSkillCooldownStatus()
-                                if qCheck or eCheck then
-                                    if targetHrp and targetHrp.Parent then
-                                        hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 25, 0)
-                                    end
-                                    break
-                                end
+                                if qCheck or eCheck then break end
                             end
-                        end
-
-                        if targetHum.Health <= 0 or not targetHrp.Parent then
-                            break
                         end
 
                         task.wait(0.1)
                     end
                 else
-                    statusLabel.Text = "Searching for Monsters..."
+                    statusLabel.Text = "Searching & Triggering..."
                     pcall(function()
                         local remotes = ReplicatedStorage:FindFirstChild("remotes")
                         if remotes and remotes:FindFirstChild("changeStartValue") then
@@ -323,7 +329,7 @@ function startFarm()
                     task.wait(1)
                 end
             end)
-            task.wait(0.2)
+            task.wait(0.1)
         end
     end)
 end
@@ -350,7 +356,7 @@ task.spawn(function()
                     if startDungeonRemote then
                         for i = 5, 1, -1 do
                             if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
-                            statusLabel.Text = "Starting in: " .. i .. "s"
+                            statusLabel.Text = "Starting in: " .. i .. "s" + 0
                             task.wait(1)
                         end
                         
