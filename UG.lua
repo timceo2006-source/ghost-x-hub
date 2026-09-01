@@ -43,7 +43,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Clean Auto Farm"
+titleLabel.Text = "Clean Auto Farm (Anti-Cheat)"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -141,6 +141,8 @@ function startFarm()
 
     local currentTarget = nil
     local lastMonsterTime = tick()
+    local farmState = "HOVER" -- HOVER (รอ/ลอยบนฟ้า) หรือ DROP (ทิ้งตัวลงมาตี)
+    local stateTimer = tick()
 
     -- ค้นหามอนสเตอร์ที่ยังมีชีวิต
     local function getTarget()
@@ -206,23 +208,47 @@ function startFarm()
 
             local targetHrp, targetHum = getTarget()
             if targetHrp and targetHum then
-                -- ลอยตัวเหนือหัวมอนสเตอร์เล็กน้อยแบบปลอดภัย (ระยะสูง 15 หน่วย) มองลงมาที่มอน
-                local hoverPos = targetHrp.Position + Vector3.new(0, 15, 0)
-                hrp.CFrame = CFrame.lookAt(hoverPos, targetHrp.Position)
+                local dist = (hrp.Position - targetHrp.Position).Magnitude
 
-                -- เทคนิคหลอกระบบเกม: เซ็ตความเร็วเป็น 0 เพื่อไม่ให้ตัวละครสะบัด แต่คงสถานะฟิสิกส์ปกติ
-                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                -- สลับสถานะตามเวลาและความเหมาะสม เพื่อหลบ Anti-Cheat แบบ Drop-Hit
+                if farmState == "HOVER" then
+                    -- ลอยตัวเตรียมพร้อมบนหัวมอนสเตอร์ (ระยะสูง 14 หน่วย)
+                    local hoverPos = targetHrp.Position + Vector3.new(0, 14, 0)
+                    hrp.CFrame = CFrame.lookAt(hoverPos, targetHrp.Position)
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-                -- ถือโอกาสกดสกิล Q เมื่อพร้อม
-                if isSkillReady() then
-                    -- จำลองกระโดดสั้นๆ หรือสั่งให้ Humanoid อยู่ในสถานะปล่อยสกิลบนพื้น
-                    humanoid.Jump = true
-                    task.wait(0.05)
-                    pressKey("Q")
-                    task.wait(0.3)
+                    -- ถ้าสกิลพร้อม หรือทิ้งช่วงครบ 1.5 วินาที ให้เปลี่ยนเป็นโหมดทิ้งตัวลงมาตี
+                    if isSkillReady() or (tick() - stateTimer > 1.5) then
+                        farmState = "DROP"
+                        stateTimer = tick()
+                    end
+
+                elseif farmState == "DROP" then
+                    -- วาร์ปหรือเคลื่อนที่ลงมาใกล้ระดับพื้น/ตัวมอนสเตอร์เพื่อให้ฟิสิกส์ทำงานตามธรรมชาติ
+                    local dropPos = targetHrp.Position + Vector3.new(0, 3, 0)
+                    hrp.CFrame = CFrame.lookAt(dropPos, targetHrp.Position)
+                    
+                    -- ปล่อยสกิลทันทีที่ตกลงมาถึงระยะ
+                    if isSkillReady() then
+                        pressKey("Q")
+                        task.wait(0.1)
+                    end
+
+                    -- สับปะกาศโจมตีปกติด้วย Tool
+                    local equippedTool = char:FindFirstChildOfClass("Tool")
+                    if equippedTool then
+                        equippedTool:Activate()
+                    end
+
+                    -- ผ่านไป 0.6 วินาที (ปล่อยให้ตกลงมาตีเสร็จ) ให้เด้งกลับขึ้นไปโหมด HOVER เพื่อหลบสกิลบอส
+                    if tick() - stateTimer > 0.6 then
+                        farmState = "HOVER"
+                        stateTimer = tick()
+                    end
                 end
             else
-                -- ถ้าหามอนไม่เจอเกิน 1.5 วินาที ให้วิ่งสแตนด์บายรอ
+                -- ถ้าหามอนไม่เจอ ให้วิ่งสแตนด์บายรอหรือเคลียร์ลูป
+                farmState = "HOVER"
                 if tick() - lastMonsterTime > 1.5 then
                     pcall(function()
                         local remotes = ReplicatedStorage:FindFirstChild("remotes")
@@ -272,7 +298,6 @@ task.spawn(function()
             else
                 statusLabel.Text = "In Dungeon / Farming"
                 
-                -- หน่วงรอ 5 วินาทีก่อนเริ่มฟาร์มหากยังไม่พบมอนสเตอร์ในแมพ
                 local checkTimer = tick()
                 while game.PlaceId ~= TARGET_PLACE_ID and getgenv().AutoCreateAndStart do
                     local _, hum = (function()
