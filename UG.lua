@@ -31,7 +31,6 @@ screenGui.Name = "CleanDungeonGui"
 screenGui.ResetOnSpawn = false
 getgenv().CleanDungeonGui = screenGui
 
--- ระบบยัด GUI ที่ปลอดภัยที่สุดสำหรับ Delta
 local successUI, uiParent = pcall(function() return gethui() end)
 if successUI and uiParent then
     screenGui.Parent = uiParent
@@ -39,7 +38,6 @@ else
     local CoreGui = game:GetService("CoreGui")
     local successCore = pcall(function() screenGui.Parent = CoreGui end)
     if not successCore then
-        -- ถ้า CoreGui โดนบล็อก ให้ยัดเข้า PlayerGui ของผู้เล่นแทน (ติดแน่นอน 100%)
         screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
     end
 end
@@ -50,7 +48,7 @@ mainFrame.Position = UDim2.new(0.68, 0, 0.08, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
-mainFrame.Draggable = true -- เปิดให้ลากได้แบบ Native
+mainFrame.Draggable = true
 mainFrame.Parent = screenGui
 
 local uiCorner = Instance.new("UICorner")
@@ -90,7 +88,7 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleButton
 
--- ระบบลาก GUI (รองรับมือถือ Delta)
+-- ระบบลาก GUI
 local dragging, dragInput, dragStart, startPos
 mainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -195,7 +193,7 @@ function startFarm()
 
     local currentTarget = nil
 
-    -- ค้นหามอนสเตอร์ที่ยังมีชีวิต
+    -- ค้นหามอนสเตอร์
     local function getTarget()
         if currentTarget and currentTarget.Parent then
             local hum = currentTarget:FindFirstChild("Humanoid")
@@ -221,17 +219,17 @@ function startFarm()
         return nil, nil
     end
 
-    -- ฟังก์ชัน Tween (หลบ Anti-Cheat)
+    -- ฟังก์ชัน Tween แบบบินเร็ว + ล็อคความสูง
     local function smoothTweenTo(targetCFrame, speed)
         local char = LocalPlayer.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        speed = speed or 16
+        speed = speed or 180 -- ปรับสปีดเริ่มต้นเพิ่มเป็น 180 (จากเดิม 16)
         local distance = (hrp.Position - targetCFrame.Position).Magnitude
         local duration = distance / speed
-        if duration < 0.05 then duration = 0.05 end
+        if duration < 0.02 then duration = 0.02 end
 
         local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
         local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
@@ -245,8 +243,9 @@ function startFarm()
         end)
 
         local startTime = tick()
-        while not completed and tick() - startTime < (duration + 1) do
-            task.wait(0.05)
+        while not completed and tick() - startTime < (duration + 0.3) do
+            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0) -- ตรึงตัวละครไม่ให้ร่วง
+            task.wait(0.02)
         end
     end
 
@@ -267,32 +266,38 @@ function startFarm()
 
                 local targetHrp, targetHum = getTarget()
                 if targetHrp and targetHum then
-                    statusLabel.Text = "Target Found: Moving..."
+                    statusLabel.Text = "Flying High to Target..."
                     
+                    -- สร้างความสูงสำหรับบินหลบมอนสเตอร์ (+40 หน่วยจากพื้นมอน)
+                    local flyHeight = Vector3.new(0, 40, 0)
+
                     local offsets = {
-                        targetHrp.CFrame * CFrame.new(0, 0, -10),
-                        targetHrp.CFrame * CFrame.new(5, 0, 0),
-                        targetHrp.CFrame * CFrame.new(-5, 0, 0),
+                        (targetHrp.CFrame * CFrame.new(0, 0, -10)) + flyHeight,
+                        (targetHrp.CFrame * CFrame.new(5, 0, 0)) + flyHeight,
+                        (targetHrp.CFrame * CFrame.new(-5, 0, 0)) + flyHeight,
                     }
 
+                    -- บินด้วยความเร็ว 180 เหนือหัวมอนสเตอร์
                     for _, posCFrame in ipairs(offsets) do
                         if not targetHrp or not targetHrp.Parent then break end
-                        smoothTweenTo(posCFrame, 25) -- ปรับให้เร็วขึ้นนิดหน่อยเพื่อลดอาการหน่วง
-                        task.wait(0.1)
+                        smoothTweenTo(posCFrame, 180)
+                        task.wait(0.03)
                     end
                     
-                    statusLabel.Text = "Attacking..."
-                    hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 25, 0)
+                    statusLabel.Text = "Attacking from Above..."
+                    -- อยู่สูงจากหัวมอนสเตอร์ 30 หน่วยเพื่อความปลอดภัยขณะโจมตี
+                    hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 30, 0)
                     hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
                     while targetHum and targetHum.Health > 0 and getgenv().AutoFarmEnabled do
                         local qReady, eReady = getSkillCooldownStatus()
 
                         if qReady or eReady then
-                            if qReady then pressKey("Q") task.wait(0.1) end
-                            if eReady then pressKey("E") task.wait(0.1) end
+                            if qReady then pressKey("Q") task.wait(0.05) end
+                            if eReady then pressKey("E") task.wait(0.05) end
                         else
-                            local heights = {50, 80, 130}
+                            -- สลับขึ้นไปลอยสูงพักคูลดาวน์ (60, 90, 140)
+                            local heights = {60, 90, 140}
                             for _, h in ipairs(heights) do
                                 if targetHrp and targetHrp.Parent then
                                     hrp.CFrame = targetHrp.CFrame + Vector3.new(0, h, 0)
@@ -300,16 +305,16 @@ function startFarm()
                                 end
                                 
                                 local waitStart = tick()
-                                while tick() - waitStart < 1.5 do
+                                while tick() - waitStart < 1.2 do
                                     local qCheck, eCheck = getSkillCooldownStatus()
                                     if qCheck or eCheck then break end
-                                    task.wait(0.2)
+                                    task.wait(0.15)
                                 end
 
                                 local qCheck, eCheck = getSkillCooldownStatus()
                                 if qCheck or eCheck then
                                     if targetHrp and targetHrp.Parent then
-                                        hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 25, 0)
+                                        hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 30, 0)
                                     end
                                     break
                                 end
@@ -319,7 +324,7 @@ function startFarm()
                         if targetHum.Health <= 0 or not targetHrp.Parent then
                             break
                         end
-                        task.wait(0.1)
+                        task.wait(0.05)
                     end
                 else
                     statusLabel.Text = "Searching for Monsters..."
@@ -329,10 +334,10 @@ function startFarm()
                             remotes.changeStartValue:FireServer()
                         end
                     end)
-                    task.wait(1)
+                    task.wait(0.5)
                 end
             end)
-            task.wait(0.1)
+            task.wait(0.05)
         end
     end)
 end
@@ -353,7 +358,7 @@ task.spawn(function()
                     if createLobbyRemote then
                         statusLabel.Text = "Creating Lobby..."
                         createLobbyRemote:InvokeServer(selectedMap, selectedDifficulty, 0, false, false, false)
-                        task.wait(2)
+                        task.wait(1.5)
                     end
 
                     if startDungeonRemote then
@@ -366,7 +371,7 @@ task.spawn(function()
                         if getgenv().AutoCreateAndStart and game.PlaceId == TARGET_PLACE_ID then
                             statusLabel.Text = "Teleporting..."
                             startDungeonRemote:FireServer()
-                            task.wait(5) -- รอจนกว่าจะวาร์ป
+                            task.wait(4)
                         end
                     end
                 end)
@@ -379,7 +384,7 @@ task.spawn(function()
         else
             statusLabel.Text = "Status: OFF"
         end
-        task.wait(2)
+        task.wait(1.5)
     end
 end)
 
