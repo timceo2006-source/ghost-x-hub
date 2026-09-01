@@ -1,5 +1,9 @@
-local TARGET_PLACE_ID = 77649408247578
+-- รอให้เกมโหลดเสร็จก่อน
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
 
+local TARGET_PLACE_ID = 77649408247578
 local selectedMap = "King's Castle"
 local selectedDifficulty = "Nightmare"
 
@@ -12,22 +16,32 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local TeleportService = game:GetService("TeleportService")
-local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+
+-- ==================== ลบ GUI เก่าออกถ้ารันซ้ำ ====================
+if getgenv().CleanDungeonGui then
+    pcall(function() getgenv().CleanDungeonGui:Destroy() end)
+end
 
 -- ==================== GUI (มุมขวาบน) ====================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CleanDungeonGui"
 screenGui.ResetOnSpawn = false
-if syn and syn.protect_gui then
-    syn.protect_gui(screenGui)
-    screenGui.Parent = CoreGui
-elseif gethui then
-    screenGui.Parent = gethui()
+getgenv().CleanDungeonGui = screenGui
+
+-- ระบบยัด GUI ที่ปลอดภัยที่สุดสำหรับ Delta
+local successUI, uiParent = pcall(function() return gethui() end)
+if successUI and uiParent then
+    screenGui.Parent = uiParent
 else
-    screenGui.Parent = CoreGui
+    local CoreGui = game:GetService("CoreGui")
+    local successCore = pcall(function() screenGui.Parent = CoreGui end)
+    if not successCore then
+        -- ถ้า CoreGui โดนบล็อก ให้ยัดเข้า PlayerGui ของผู้เล่นแทน (ติดแน่นอน 100%)
+        screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
 end
 
 local mainFrame = Instance.new("Frame")
@@ -35,6 +49,8 @@ mainFrame.Size = UDim2.new(0, 200, 0, 115)
 mainFrame.Position = UDim2.new(0.68, 0, 0.08, 0)
 mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true -- เปิดให้ลากได้แบบ Native
 mainFrame.Parent = screenGui
 
 local uiCorner = Instance.new("UICorner")
@@ -44,7 +60,7 @@ uiCorner.Parent = mainFrame
 local titleLabel = Instance.new("TextLabel")
 titleLabel.Size = UDim2.new(1, 0, 0, 25)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Anti-Cheat Safe Farm"
+titleLabel.Text = "Clean Auto Farm"
 titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 titleLabel.TextSize = 13
 titleLabel.Font = Enum.Font.SourceSansBold
@@ -74,7 +90,7 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleButton
 
--- ระบบลาก GUI
+-- ระบบลาก GUI (รองรับมือถือ Delta)
 local dragging, dragInput, dragStart, startPos
 mainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -92,6 +108,11 @@ UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
         local delta = input.Position - dragStart
         mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
     end
 end)
 
@@ -121,9 +142,11 @@ local function pressKey(keyStr)
     local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
     if success and keyCode then
         task.spawn(function()
-            VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-            task.wait(0.04)
-            VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+            pcall(function()
+                VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+                task.wait(0.05)
+                VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+            end)
         end)
     end
 end
@@ -172,6 +195,7 @@ function startFarm()
 
     local currentTarget = nil
 
+    -- ค้นหามอนสเตอร์ที่ยังมีชีวิต
     local function getTarget()
         if currentTarget and currentTarget.Parent then
             local hum = currentTarget:FindFirstChild("Humanoid")
@@ -184,7 +208,7 @@ function startFarm()
         currentTarget = nil
         for _, obj in ipairs(workspace:GetDescendants()) do
             if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                if not obj.Name:find("Preview") then
+                if not string.find(obj.Name, "Preview") then
                     local hum = obj:FindFirstChild("Humanoid")
                     local hrp = obj:FindFirstChild("HumanoidRootPart")
                     if hum and hrp and hum.Health > 0 then
@@ -197,17 +221,17 @@ function startFarm()
         return nil, nil
     end
 
-    -- ฟังก์ชัน Smooth Tween หลบ Anti-Cheat (ป้องกันการวาร์ปกระชากที่ทำให้โดนเตะ)
+    -- ฟังก์ชัน Tween (หลบ Anti-Cheat)
     local function smoothTweenTo(targetCFrame, speed)
         local char = LocalPlayer.Character
         if not char then return end
         local hrp = char:FindFirstChild("HumanoidRootPart")
         if not hrp then return end
 
-        speed = speed or 25
+        speed = speed or 16
         local distance = (hrp.Position - targetCFrame.Position).Magnitude
         local duration = distance / speed
-        if duration < 0.04 then duration = 0.04 end
+        if duration < 0.05 then duration = 0.05 end
 
         local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear)
         local tween = TweenService:Create(hrp, tweenInfo, {CFrame = targetCFrame})
@@ -221,27 +245,12 @@ function startFarm()
         end)
 
         local startTime = tick()
-        while not completed and tick() - startTime < (duration + 0.5) do
-            task.wait(0.02)
+        while not completed and tick() - startTime < (duration + 1) do
+            task.wait(0.05)
         end
     end
 
-    -- ฟังก์ชันตรวจสอบสกิล/ฮิตบ็อกซ์อันตรายรอบตัวเพื่อหลบหลีกแอนตี้ชีสและสกิลบอส
-    local function isAreaSafe(pos)
-        local dungeon = workspace:FindFirstChild("dungeon") or workspace
-        for _, obj in ipairs(dungeon:GetDescendants()) do
-            if obj:IsA("BasePart") and obj.Transparency < 0.9 then
-                local name = string.lower(obj.Name)
-                if string.find(name, "warn") or string.find(name, "skill") or string.find(name, "hitbox") or string.find(name, "spike") or string.find(name, "rock") then
-                    if (obj.Position - pos).Magnitude < 7 then
-                        return false
-                    end
-                end
-            end
-        end
-        return true
-    end
-
+    -- ลูปหลักในการฟาร์ม
     getgenv().DungeonFarmLoop = task.spawn(function()
         while getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID do
             pcall(function()
@@ -256,70 +265,64 @@ function startFarm()
                     return 
                 end
 
-                -- ปิดการชนกับวัตถุชั่วคราวเพื่อไม่ให้ติดกำแพงเวลา Tween
-                for _, part in ipairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") then part.CanCollide = false end
-                end
-
                 local targetHrp, targetHum = getTarget()
                 if targetHrp and targetHum then
-                    statusLabel.Text = "Moving to Monster..."
+                    statusLabel.Text = "Target Found: Moving..."
                     
-                    -- ใช้ Tween เข้าหาเพื่อป้องกัน Anti-Cheat ตรวจจับการวาป (Teleport Check)
-                    local hoverTarget = targetHrp.CFrame + Vector3.new(0, 20, 0)
-                    smoothTweenTo(hoverTarget, 35)
+                    local offsets = {
+                        targetHrp.CFrame * CFrame.new(0, 0, -10),
+                        targetHrp.CFrame * CFrame.new(5, 0, 0),
+                        targetHrp.CFrame * CFrame.new(-5, 0, 0),
+                    }
 
-                    -- ลูปต่อสู้และเช็กหลบสกิล
-                    while targetHum and targetHum.Health > 0 and getgenv().AutoFarmEnabled do
+                    for _, posCFrame in ipairs(offsets) do
                         if not targetHrp or not targetHrp.Parent then break end
+                        smoothTweenTo(posCFrame, 25) -- ปรับให้เร็วขึ้นนิดหน่อยเพื่อลดอาการหน่วง
+                        task.wait(0.1)
+                    end
+                    
+                    statusLabel.Text = "Attacking..."
+                    hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 25, 0)
+                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
 
-                        -- ตรวจสอบว่ามีสกิลพุ่งขึ้นมาใกล้ตัวไหม ถ้ามีให้ขยับหลบขึ้นที่สูงทันที
-                        local currentPos = hrp.Position
-                        if not isAreaSafe(currentPos) then
-                            statusLabel.Text = "Evading Skill!"
-                            local safeEvasionPos = targetHrp.CFrame + Vector3.new(0, 45, 0)
-                            smoothTweenTo(safeEvasionPos, 50)
-                            task.wait(0.5)
-                        else
-                            -- คงตำแหน่งเกาะหัวเพื่อตี
-                            hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 20, 0)
-                            hrp.AssemblyLinearVelocity = Vector3.zero
-                        end
-
+                    while targetHum and targetHum.Health > 0 and getgenv().AutoFarmEnabled do
                         local qReady, eReady = getSkillCooldownStatus()
+
                         if qReady or eReady then
-                            if qReady then
-                                pressKey("Q")
-                                task.wait(0.08)
-                            end
-                            if eReady then
-                                pressKey("E")
-                                task.wait(0.08)
-                            end
+                            if qReady then pressKey("Q") task.wait(0.1) end
+                            if eReady then pressKey("E") task.wait(0.1) end
                         else
-                            -- พักคูลดาวน์บนที่สูงปลอดภัย
-                            local heights = {40, 70, 100}
+                            local heights = {50, 80, 130}
                             for _, h in ipairs(heights) do
                                 if targetHrp and targetHrp.Parent then
-                                    smoothTweenTo(targetHrp.CFrame + Vector3.new(0, h, 0), 30)
+                                    hrp.CFrame = targetHrp.CFrame + Vector3.new(0, h, 0)
+                                    hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
                                 end
                                 
                                 local waitStart = tick()
-                                while tick() - waitStart < 1.2 do
+                                while tick() - waitStart < 1.5 do
                                     local qCheck, eCheck = getSkillCooldownStatus()
                                     if qCheck or eCheck then break end
-                                    task.wait(0.1)
+                                    task.wait(0.2)
                                 end
 
                                 local qCheck, eCheck = getSkillCooldownStatus()
-                                if qCheck or eCheck then break end
+                                if qCheck or eCheck then
+                                    if targetHrp and targetHrp.Parent then
+                                        hrp.CFrame = targetHrp.CFrame + Vector3.new(0, 25, 0)
+                                    end
+                                    break
+                                end
                             end
                         end
 
+                        if targetHum.Health <= 0 or not targetHrp.Parent then
+                            break
+                        end
                         task.wait(0.1)
                     end
                 else
-                    statusLabel.Text = "Searching & Triggering..."
+                    statusLabel.Text = "Searching for Monsters..."
                     pcall(function()
                         local remotes = ReplicatedStorage:FindFirstChild("remotes")
                         if remotes and remotes:FindFirstChild("changeStartValue") then
@@ -340,8 +343,8 @@ task.spawn(function()
         if getgenv().AutoCreateAndStart then
             if game.PlaceId == TARGET_PLACE_ID then
                 pcall(function()
-                    statusLabel.Text = "Waiting for remotes..."
-                    local remotes = ReplicatedStorage:WaitForChild("remotes", 10)
+                    statusLabel.Text = "Waiting for lobby..."
+                    local remotes = ReplicatedStorage:WaitForChild("remotes", 5)
                     if not remotes then return end
 
                     local createLobbyRemote = remotes:FindFirstChild("createLobby")
@@ -350,20 +353,20 @@ task.spawn(function()
                     if createLobbyRemote then
                         statusLabel.Text = "Creating Lobby..."
                         createLobbyRemote:InvokeServer(selectedMap, selectedDifficulty, 0, false, false, false)
-                        task.wait(1.5)
+                        task.wait(2)
                     end
 
                     if startDungeonRemote then
-                        for i = 5, 1, -1 do
+                        for i = 3, 1, -1 do
                             if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
-                            statusLabel.Text = "Starting in: " .. i .. "s" + 0
+                            statusLabel.Text = "Starting in: " .. i .. "s"
                             task.wait(1)
                         end
                         
                         if getgenv().AutoCreateAndStart and game.PlaceId == TARGET_PLACE_ID then
-                            statusLabel.Text = "Starting Game..."
+                            statusLabel.Text = "Teleporting..."
                             startDungeonRemote:FireServer()
-                            task.wait(3)
+                            task.wait(5) -- รอจนกว่าจะวาร์ป
                         end
                     end
                 end)
