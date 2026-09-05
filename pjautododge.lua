@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -15,38 +16,13 @@ Lighting.Changed:Connect(function()
 	Lighting.GlobalShadows = false
 end)
 
-local activeDrawings = {}
-
-local function clearDrawings()
-	for _, drawing in pairs(activeDrawings) do
-		drawing:Remove()
-	end
-	activeDrawings = {}
-end
-
-local function createEspElements()
-	local box = Drawing.new("Square")
-	box.Visible = false
-	box.Color = Color3.fromRGB(0, 255, 255)
-	box.Thickness = 1.5
-	box.Filled = false
-	table.insert(activeDrawings, box)
-
-	local text = Drawing.new("Text")
-	text.Visible = false
-	text.Center = true
-	text.Outline = true
-	text.Color = Color3.fromRGB(255, 255, 255)
-	text.Size = 14
-	table.insert(activeDrawings, text)
-
-	return box, text
-end
-
-local function isHoldingTool()
+local function isAimingWithTool()
 	local char = LocalPlayer.Character
 	if not char then return false end
-	return char:FindFirstChildOfClass("Tool") ~= nil
+	local tool = char:FindFirstChildOfClass("Tool")
+	if not tool then return false end
+	local isHoldingClick = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) or (UserInputService.TouchEnabled and #UserInputService:GetTouches() > 0)
+	return isHoldingClick
 end
 
 local function isVisible(targetPart)
@@ -93,8 +69,6 @@ local function getClosestVisiblePlayer(myPos)
 end
 
 RunService.RenderStepped:Connect(function()
-	clearDrawings()
-
 	local char = LocalPlayer.Character
 	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 	local myPos = char.HumanoidRootPart.Position
@@ -103,34 +77,69 @@ RunService.RenderStepped:Connect(function()
 		if player ~= LocalPlayer and player.Character then
 			local pChar = player.Character
 			local pHum = pChar:FindFirstChildOfClass("Humanoid")
-			local pRoot = pChar:FindFirstChild("HumanoidRootPart")
+			local head = pChar:FindFirstChild("Head")
 			
-			if pHum and pHum.Health > 0 and pRoot then
-				local dist = (myPos - pRoot.Position).Magnitude
-				if dist < 2500 then
-					local vector, onScreen = Camera:WorldToViewportPoint(pRoot.Position)
-					if onScreen then
-						local box, txt = createEspElements()
-						local scaleFactor = 1000 / vector.Z
-						box.Size = Vector2.new(25 * scaleFactor, 45 * scaleFactor)
-						box.Position = Vector2.new(vector.X - box.Size.X / 2, vector.Y - box.Size.Y / 2)
-						box.Visible = true
+			if pHum and pHum.Health > 0 and head then
+				local gui = head:FindFirstChild("PlayerInfoGui")
+				if not gui then
+					gui = Instance.new("BillboardGui")
+					gui.Name = "PlayerInfoGui"
+					gui.Adornee = head
+					-- ใช้ Size แบบ Scale ผสม Offset เพื่อให้ปรับขนาดตามระยะอัตโนมัติ
+					gui.Size = UDim2.new(0, 160, 0, 40)
+					gui.StudsOffset = Vector3.new(0, 2.5, 0)
+					gui.AlwaysOnTop = true
+					gui.Parent = head
 
-						txt.Text = string.format("%s [%dm]", player.Name, math.floor(dist))
-						txt.Position = Vector2.new(vector.X, box.Position.Y - 18)
-						txt.Visible = true
+					local textLabel = Instance.new("TextLabel")
+					textLabel.Name = "InfoText"
+					textLabel.Size = UDim2.new(1, 0, 1, 0)
+					textLabel.BackgroundTransparency = 1
+					textLabel.TextColor3 = Color3.fromRGB(0, 255, 255)
+					textLabel.TextStrokeTransparency = 0
+					textLabel.TextSize = 14
+					textLabel.Font = Enum.Font.SourceSansBold
+					textLabel.Parent = gui
+				end
+
+				local txt = gui:FindFirstChild("InfoText")
+				if txt then
+					local dist = math.floor((myPos - head.Position).Magnitude)
+					local hp = math.floor(pHum.Health)
+					txt.Text = string.format("%s | HP: %d | [%dm]", player.Name, hp, dist)
+					
+					-- ระบบควบคุมขนาดตัวหนังสือไม่ให้เล็กเกินไปเมื่ออยู่ไกล
+					-- ยิ่งไกล ค่า TextScaled จะช่วยปรับลง แต่เราจำกัดขนาดต่ำสุดไว้ที่ 11 เพื่อให้อ่านออก
+					if dist > 1500 then
+						txt.TextSize = 11
+					elseif dist > 150 then
+						txt.TextSize = 12
+					else
+						txt.TextSize = 14
 					end
+				end
+				
+				local hl = pChar:FindFirstChild("PlayerHighlight")
+				if not hl then
+					hl = Instance.new("Highlight")
+					hl.Name = "PlayerHighlight"
+					hl.Adornee = pChar
+					hl.Parent = pChar
+					hl.FillColor = Color3.fromRGB(0, 255, 255)
+					hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+					hl.FillTransparency = 0.6
+					hl.OutlineTransparency = 0
 				end
 			end
 		end
 	end
 
-	if isHoldingTool() then
+	if isAimingWithTool() then
 		local targetHead = getClosestVisiblePlayer(myPos)
 		if targetHead then
 			local currentCamCF = Camera.CFrame
 			local targetCF = CFrame.new(currentCamCF.Position, targetHead.Position)
-			Camera.CFrame = currentCamCF:Lerp(targetCF, 0.25)
+			Camera.CFrame = currentCamCF:Lerp(targetCF, 0.3)
 		end
 	end
 
