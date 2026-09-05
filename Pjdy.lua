@@ -283,7 +283,7 @@ Tab:Button({
 											
 											if dist > 1500 then
 												txt.TextSize = 11
-											elseif dist > 300 then
+											elseif dist > 2500 then
 												txt.TextSize = 12
 											else
 												txt.TextSize = 14
