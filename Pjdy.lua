@@ -197,10 +197,10 @@ Tab:Button({
 		espHubEnabled = not espHubEnabled
 		
 		if espHubEnabled then
-			local function applyEsp(player, char)
-				if player == LocalPlayer then return end
-				local head = char:FindFirstChild("Head") or char:WaitForChild("Head", 2)
-				local humanoid = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 2)
+			-- ลบ WaitForChild ออกเพื่อไม่ให้ลูป RenderStepped ค้าง
+			local function applyEsp(char)
+				local head = char:FindFirstChild("Head")
+				local humanoid = char:FindFirstChildOfClass("Humanoid")
 				if not head or not humanoid then return end
 
 				if not head:FindFirstChild("PlayerInfoGui") then
@@ -235,27 +235,6 @@ Tab:Button({
 				end
 			end
 
-			local function setupPlayer(player)
-				if player ~= LocalPlayer then
-					if player.Character then
-						task.spawn(function()
-							applyEsp(player, player.Character)
-						end)
-					end
-					charAddedConns[player] = player.CharacterAdded:Connect(function(char)
-						task.spawn(function()
-							applyEsp(player, char)
-						end)
-					end)
-				end
-			end
-
-			for _, p in ipairs(Players:GetPlayers()) do
-				setupPlayer(p)
-			end
-
-			playerAddedConn = Players.PlayerAdded:Connect(setupPlayer)
-
 			espLoop = RunService.RenderStepped:Connect(function()
 				local char = LocalPlayer.Character
 				if not char or not char:FindFirstChild("HumanoidRootPart") then return end
@@ -269,10 +248,11 @@ Tab:Button({
 							local head = pChar:FindFirstChild("Head")
 							
 							if pHum and head then
+								-- เรียกใช้ applyEsp แบบไม่ Delay
+								applyEsp(pChar)
+
 								local gui = head:FindFirstChild("PlayerInfoGui")
-								if not gui then
-									applyEsp(player, pChar)
-								else
+								if gui then
 									local txt = gui:FindFirstChild("InfoText")
 									if txt then
 										local dist = math.floor((myPos - head.Position).Magnitude)
@@ -281,9 +261,10 @@ Tab:Button({
 											txt.Text = string.format("%s | HP: %d | [%dm]", player.Name, hp, dist)
 											gui.Enabled = true
 											
+											-- แก้ไขลอจิกขนาดตัวหนังสือเล็กน้อยให้ไล่สเกลถูกต้อง
 											if dist > 1500 then
 												txt.TextSize = 11
-											elseif dist > 2500 then
+											elseif dist > 500 then
 												txt.TextSize = 12
 											else
 												txt.TextSize = 14
@@ -309,15 +290,7 @@ Tab:Button({
 				espLoop:Disconnect()
 				espLoop = nil
 			end
-			if playerAddedConn then
-				playerAddedConn:Disconnect()
-				playerAddedConn = nil
-			end
-			for _, conn in pairs(charAddedConns) do
-				if conn then conn:Disconnect() end
-			end
-			charAddedConns = {}
-
+			
 			for _, player in ipairs(Players:GetPlayers()) do
 				if player.Character then
 					local head = player.Character:FindFirstChild("Head")
