@@ -1,446 +1,142 @@
-local TARGET_PLACE_ID = 77649408247578
-
-local selectedMap = "The Underworld"
-local selectedDifficulty = "Insane"
-
--- ตั้งค่าฮิตบ็อกซ์
-local HITBOX_RADIUS = 150
-local HITBOX_SIZE = Vector3.new(20, 20, 20)
-
--- ตั้งค่าเปิดใช้งานระบบ
-getgenv().AutoCreateAndStart = true
-getgenv().AutoFarmEnabled = true
-getgenv().DungeonFarmLoop = nil
-
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local TeleportService = game:GetService("TeleportService")
-local CoreGui = game:GetService("CoreGui")
-local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
--- ==================== GUI (รองรับ Delta Mobile) ====================
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DungeonFarmGui"
-screenGui.ResetOnSpawn = false
+Lighting.Brightness = 2
+Lighting.ClockTime = 14
+Lighting.FogEnd = 100000
+Lighting.GlobalShadows = false
 
--- แก้ไขจุดที่ทำให้รันบนมือถือไม่ได้ (ใช้ CoreGui โดยตรงปลอดภัยที่สุด)
-local successGui, err = pcall(function()
-    if gethui then
-        screenGui.Parent = gethui()
-    else
-        screenGui.Parent = CoreGui
-    end
+Lighting.Changed:Connect(function()
+	Lighting.Brightness = 2
+	Lighting.ClockTime = 14
+	Lighting.GlobalShadows = false
 end)
-if not successGui then
-    screenGui.Parent = CoreGui
+
+local activeDrawings = {}
+
+local function clearDrawings()
+	for _, drawing in pairs(activeDrawings) do
+		drawing:Remove()
+	end
+	activeDrawings = {}
 end
 
-local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.new(0, 200, 0, 115)
-mainFrame.Position = UDim2.new(0.68, 0, 0.08, 0)
-mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-mainFrame.BorderSizePixel = 0
-mainFrame.Parent = screenGui
+local function createEspElements()
+	local box = Drawing.new("Square")
+	box.Visible = false
+	box.Color = Color3.fromRGB(0, 255, 255)
+	box.Thickness = 1.5
+	box.Filled = false
+	table.insert(activeDrawings, box)
 
-local uiCorner = Instance.new("UICorner")
-uiCorner.CornerRadius = UDim.new(0, 8)
-uiCorner.Parent = mainFrame
+	local text = Drawing.new("Text")
+	text.Visible = false
+	text.Center = true
+	text.Outline = true
+	text.Color = Color3.fromRGB(255, 255, 255)
+	text.Size = 14
+	table.insert(activeDrawings, text)
 
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(1, 0, 0, 25)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text = "Dungeon Auto Farm"
-titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-titleLabel.TextSize = 13
-titleLabel.Font = Enum.Font.SourceSansBold
-titleLabel.Parent = mainFrame
-
-local timerLabel = Instance.new("TextLabel")
-timerLabel.Size = UDim2.new(1, 0, 0, 20)
-timerLabel.Position = UDim2.new(0, 0, 0, 25)
-timerLabel.BackgroundTransparency = 1
-timerLabel.Text = "Status: Ready"
-timerLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-timerLabel.TextSize = 11
-timerLabel.Font = Enum.Font.SourceSans
-timerLabel.Parent = mainFrame
-
-local toggleButton = Instance.new("TextButton")
-toggleButton.Size = UDim2.new(0.9, 0, 0, 38)
-toggleButton.Position = UDim2.new(0.05, 0, 0.52, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
-toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-toggleButton.TextSize = 14
-toggleButton.Font = Enum.Font.SourceSansBold
-toggleButton.Text = "Status: ON"
-toggleButton.Parent = mainFrame
-
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(0, 6)
-btnCorner.Parent = toggleButton
-
--- ระบบลาก GUI (รองรับ Touch บนมือถือ)
-local dragging, dragInput, dragStart, startPos
-mainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-mainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
-local startFarm, stopFarm
-
-toggleButton.MouseButton1Click:Connect(function()
-    getgenv().AutoFarmEnabled = not getgenv().AutoFarmEnabled
-    getgenv().AutoCreateAndStart = getgenv().AutoFarmEnabled
-    
-    if getgenv().AutoFarmEnabled then
-        toggleButton.Text = "Status: ON"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(50, 205, 50)
-        timerLabel.Text = "Status: Ready"
-        if game.PlaceId ~= TARGET_PLACE_ID then
-            task.defer(startFarm)
-        end
-    else
-        toggleButton.Text = "Status: OFF"
-        toggleButton.BackgroundColor3 = Color3.fromRGB(205, 50, 50)
-        timerLabel.Text = "Paused"
-        stopFarm()
-    end
-end)
-
--- ==================== ระบบหลักของสคริปต์ ====================
-
-task.spawn(function()
-    pcall(function()
-        local errorPrompt = CoreGui:FindFirstChild("RobloxPromptGui", true)
-        if errorPrompt then
-            errorPrompt.DescendantAdded:Connect(function(subChild)
-                if subChild.Name == "ErrorTitle" then
-                    task.wait(2)
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-                end
-            end)
-        end
-    end)
-    
-    while true do
-        task.wait(5)
-        pcall(function()
-            if not LocalPlayer or not LocalPlayer.Parent then
-                TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
-            end
-        end)
-    end
-end)
-
-local function pressKey(keyStr)
-    local success, keyCode = pcall(function() return Enum.KeyCode[keyStr:upper()] end)
-    if success and keyCode then
-        task.spawn(function()
-            VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-            task.wait(0.02)
-            VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
-        end)
-    end
+	return box, text
 end
 
-function stopFarm()
-    if getgenv().DungeonFarmLoop then
-        getgenv().DungeonFarmLoop:Disconnect()
-        getgenv().DungeonFarmLoop = nil
-    end
+local function isHoldingTool()
+	local char = LocalPlayer.Character
+	if not char then return false end
+	return char:FindFirstChildOfClass("Tool") ~= nil
 end
 
-function startFarm()
-    if game.PlaceId == TARGET_PLACE_ID then return end
+local function isVisible(targetPart)
+	local char = LocalPlayer.Character
+	if not char or not char:FindFirstChild("Head") then return false end
 
-    stopFarm()
+	local origin = Camera.CFrame.Position
+	local destination = targetPart.Position
 
-    local currentTargetModel = nil
-    local lastFoundMonsterTime = tick()
-    local farmState = "HOVER"
+	local rayParams = RaycastParams.new()
+	rayParams.FilterDescendantsInstances = {char, targetPart.Parent}
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.IgnoreWater = true
 
-    local hoverHeights = {120, 40, 70}
-    local heightIndex = 1
-    local lastHeightChange = tick()
-    local currentHoverHeight = hoverHeights[1]
-
-    local function expandNearbyHitboxes(playerHrp)
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                local modelName = obj.Name
-                if not (modelName:find("_reyillsPreview") or modelName:find("Preview")) then
-                    local hum = obj:FindFirstChild("Humanoid")
-                    local hrp = obj:FindFirstChild("HumanoidRootPart")
-
-                    if hum and hrp and hum.Health > 0 then
-                        local distance = (hrp.Position - playerHrp.Position).Magnitude
-                        if distance <= HITBOX_RADIUS then
-                            hrp.Size = HITBOX_SIZE
-                            hrp.Transparency = 0.8
-                            hrp.CanCollide = false
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    local function getTarget()
-        if currentTargetModel and currentTargetModel.Parent then
-            local hum = currentTargetModel:FindFirstChild("Humanoid")
-            if hum and hum.Health > 0 then
-                local hrp = currentTargetModel:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    lastFoundMonsterTime = tick()
-                    return hrp, hum
-                end
-            end
-        end
-
-        currentTargetModel = nil
-        
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("Model") and obj ~= LocalPlayer.Character and not Players:GetPlayerFromCharacter(obj) then
-                local modelName = obj.Name
-                if modelName:find("_reyillsPreview") or modelName:find("Preview") then
-                    continue
-                end
-
-                local hum = obj:FindFirstChild("Humanoid")
-                local hrp = obj:FindFirstChild("HumanoidRootPart")
-
-                if hum and hrp and hum.Health > 0 then
-                    if obj:FindFirstChild("Head") or obj:FindFirstChild("HumanoidRootPart") then
-                        currentTargetModel = obj
-                        lastFoundMonsterTime = tick()
-                        return hrp, hum
-                    end
-                end
-            end
-        end
-        return nil, nil
-    end
-
-    local function checkSkillsReady()
-        local readyTools = {}
-        local totalSkills = 0
-        
-        local items = {}
-        if LocalPlayer:FindFirstChild("Backpack") then
-            for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do table.insert(items, v) end
-        end
-        if LocalPlayer.Character then
-            for _, v in ipairs(LocalPlayer.Character:GetChildren()) do table.insert(items, v) end
-        end
-
-        for _, item in ipairs(items) do
-            if item:IsA("Tool") then
-                local slot = item:FindFirstChild("abilitySlot")
-                local cd = item:FindFirstChild("cooldown")
-                if slot and cd and slot:IsA("ValueBase") and cd:IsA("ValueBase") then
-                    totalSkills = totalSkills + 1
-                    if cd.Value <= 0.1 then
-                        table.insert(readyTools, item)
-                    end
-                end
-            end
-        end
-
-        local requiredCount = math.min(2, totalSkills)
-        if totalSkills > 0 and #readyTools >= requiredCount then
-            return true, readyTools
-        end
-        return false, {}
-    end
-
-    getgenv().DungeonFarmLoop = RunService.Heartbeat:Connect(function()
-        if not getgenv().AutoFarmEnabled or game.PlaceId == TARGET_PLACE_ID then return end
-
-        pcall(function()
-            local char = LocalPlayer.Character
-            if not char or not char:FindFirstChild("Humanoid") or char.Humanoid.Health <= 0 then return end
-
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if not hrp then return end
-
-            for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then part.CanCollide = false end
-            end
-            hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-
-            expandNearbyHitboxes(hrp)
-
-            local targetHrp, targetHum = getTarget()
-            if targetHrp and targetHum then
-                local isReady, readyTools = checkSkillsReady()
-
-                if isReady and farmState == "HOVER" then
-                    farmState = "ATTACK"
-
-                    task.spawn(function()
-                        for _, item in ipairs(readyTools) do
-                            local slot = item:FindFirstChild("abilitySlot")
-                            local cd = item:FindFirstChild("cooldown")
-
-                            if slot and slot:IsA("ValueBase") then
-                                local keyName = tostring(slot.Value)
-                                local startWait = tick()
-
-                                while cd and cd:IsA("ValueBase") and cd.Value <= 0.2 do
-                                    pressKey(keyName)
-                                    task.wait(0.06)
-
-                                    if (tick() - startWait) > 2.5 then
-                                        break
-                                    end
-                                end
-                                
-                                task.wait(0.15)
-                            end
-                        end
-
-                        local currentChar = LocalPlayer.Character
-                        if currentChar then
-                            local equippedTool = currentChar:FindFirstChildOfClass("Tool")
-                            if equippedTool then
-                                equippedTool:Activate()
-                            end
-                        end
-
-                        task.wait(0.2)
-                        farmState = "TRANSITION"
-                        task.wait(0.35)
-
-                        heightIndex = 1
-                        currentHoverHeight = hoverHeights[1]
-                        lastHeightChange = tick()
-                        farmState = "HOVER"
-                    end)
-                end
-
-                local targetPos = targetHrp.Position
-                local orbitPos
-
-                if farmState == "ATTACK" then
-                    local timeNow = tick()
-                    local radius = 18 
-                    local speed = 3   
-                    local angle = timeNow * speed
-                    
-                    local offsetX = math.cos(angle) * radius
-                    local offsetZ = math.sin(angle) * radius
-                    orbitPos = targetPos + Vector3.new(offsetX, 15, offsetZ)
-
-                elseif farmState == "TRANSITION" then
-                    orbitPos = targetPos + Vector3.new(0, 35, 0)
-
-                else 
-                    if tick() - lastHeightChange >= 1 then
-                        heightIndex = (heightIndex % #hoverHeights) + 1
-                        currentHoverHeight = hoverHeights[heightIndex]
-                        lastHeightChange = tick()
-                    end
-
-                    orbitPos = targetPos + Vector3.new(0, currentHoverHeight, 0)
-                end
-
-                hrp.CFrame = CFrame.lookAt(orbitPos, targetPos)
-
-            else
-                farmState = "HOVER"
-                if tick() - lastFoundMonsterTime > 1.5 then
-                    pcall(function()
-                        local remotes = ReplicatedStorage:FindFirstChild("remotes")
-                        if remotes then
-                            local changeStartValue = remotes:FindFirstChild("changeStartValue")
-                            if changeStartValue and changeStartValue:IsA("RemoteEvent") then
-                                changeStartValue:FireServer()
-                            end
-                        end
-                    end)
-                end
-            end
-        end)
-    end)
+	local result = workspace:Raycast(origin, destination - origin, rayParams)
+	if result then return false end
+	return true
 end
 
-task.spawn(function()
-    while true do
-        if getgenv().AutoCreateAndStart then
-            if game.PlaceId == TARGET_PLACE_ID then
-                pcall(function()
-                    timerLabel.Text = "Waiting for remotes..."
-                    local remotes = ReplicatedStorage:WaitForChild("remotes", 10)
-                    if not remotes then return end
+local function getClosestVisiblePlayer(myPos)
+	local closestTarget = nil
+	local shortestDist = math.huge
+	
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			if player.Team ~= LocalPlayer.Team or not LocalPlayer.Team then
+				local char = player.Character
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				local head = char:FindFirstChild("Head")
+				
+				if hum and hum.Health > 0 and head then
+					if isVisible(head) then
+						local dist = (myPos - head.Position).Magnitude
+						if dist < shortestDist then
+							shortestDist = dist
+							closestTarget = head
+						end
+					end
+				end
+			end
+		end
+	end
+	return closestTarget
+end
 
-                    local createLobbyRemote = remotes:FindFirstChild("createLobby")
-                    local startDungeonRemote = remotes:FindFirstChild("startDungeon")
+RunService.RenderStepped:Connect(function()
+	clearDrawings()
 
-                    if createLobbyRemote then
-                        timerLabel.Text = "Creating Lobby..."
-                        local args = {
-                            selectedMap,
-                            selectedDifficulty,
-                            0,
-                            false,
-                            false,
-                            false
-                        }
-                        createLobbyRemote:InvokeServer(unpack(args))
-                        task.wait(1.5)
-                    end
+	local char = LocalPlayer.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+	local myPos = char.HumanoidRootPart.Position
 
-                    if startDungeonRemote then
-                        for i = 5, 1, -1 do
-                            if not getgenv().AutoCreateAndStart or game.PlaceId ~= TARGET_PLACE_ID then break end
-                            timerLabel.Text = "Starting in: " .. i .. "s"
-                            task.wait(1)
-                        end
-                        
-                        if getgenv().AutoCreateAndStart and game.PlaceId == TARGET_PLACE_ID then
-                            timerLabel.Text = "Starting Game..."
-                            startDungeonRemote:FireServer()
-                            task.wait(3)
-                        end
-                    end
-                end)
-            else
-                timerLabel.Text = "In Dungeon / Farming"
-                if not getgenv().DungeonFarmLoop then
-                    task.defer(startFarm)
-                end
-            end
-        else
-            timerLabel.Text = "Status: OFF"
-        end
-        task.wait(2)
-    end
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= LocalPlayer and player.Character then
+			local pChar = player.Character
+			local pHum = pChar:FindFirstChildOfClass("Humanoid")
+			local pRoot = pChar:FindFirstChild("HumanoidRootPart")
+			
+			if pHum and pHum.Health > 0 and pRoot then
+				local dist = (myPos - pRoot.Position).Magnitude
+				if dist < 2500 then
+					local vector, onScreen = Camera:WorldToViewportPoint(pRoot.Position)
+					if onScreen then
+						local box, txt = createEspElements()
+						local scaleFactor = 1000 / vector.Z
+						box.Size = Vector2.new(25 * scaleFactor, 45 * scaleFactor)
+						box.Position = Vector2.new(vector.X - box.Size.X / 2, vector.Y - box.Size.Y / 2)
+						box.Visible = true
+
+						txt.Text = string.format("%s [%dm]", player.Name, math.floor(dist))
+						txt.Position = Vector2.new(vector.X, box.Position.Y - 18)
+						txt.Visible = true
+					end
+				end
+			end
+		end
+	end
+
+	if isHoldingTool() then
+		local targetHead = getClosestVisiblePlayer(myPos)
+		if targetHead then
+			local currentCamCF = Camera.CFrame
+			local targetCF = CFrame.new(currentCamCF.Position, targetHead.Position)
+			Camera.CFrame = currentCamCF:Lerp(targetCF, 0.25)
+		end
+	end
+
+	pcall(function()
+		if Camera:FindFirstChild("CameraShake") then
+			Camera.CameraShake:Destroy()
+		end
+	end)
 end)
-
-if getgenv().AutoFarmEnabled and game.PlaceId ~= TARGET_PLACE_ID then
-    task.defer(startFarm)
-end
