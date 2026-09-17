@@ -20,3 +20,32 @@ local Window = WindUI:CreateWindow({
 		end,
 	},
 })
+
+local Tab = Window:Tab({
+    Title = "Main",
+    Icon = "house", -- optional
+    Locked = false,
+})
+
+local local = Tab:Toggle({
+    Title = "Auto Roll",
+    Desc = "Auto Roll Unit",
+    Type = "Checkbox",
+    Value = false,
+    Callback = function(state) 
+        State.AutoRoll = state
+        
+        if state then
+            task.spawn(function()
+                while State.AutoRoll do
+                    pcall(function()
+                        if RollService:FindFirstChild("RE") and RollService.RE:FindFirstChild("Roll") then
+                            RollService.RE.Roll:FireServer()
+                        end
+                    end)
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+})
