@@ -16,8 +16,6 @@ local Window = WindUI:CreateWindow({
 	BackgroundImageTransparency = 0.42,
 	HideSearchBar = true,
 	ScrollBarEnabled = false,
-		Callback = function()
-		end,	
 })
 
 local Tab = Window:Tab({
