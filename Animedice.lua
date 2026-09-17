@@ -17,8 +17,7 @@ local Window = WindUI:CreateWindow({
 	HideSearchBar = true,
 	ScrollBarEnabled = false,
 		Callback = function()
-		end,
-	},
+		end,	
 })
 
 local Tab = Window:Tab({
@@ -27,7 +26,7 @@ local Tab = Window:Tab({
     Locked = false,
 })
 
-local local = Tab:Toggle({
+local = Tab:Toggle({
     Title = "Auto Roll",
     Desc = "Auto Roll Unit",
     Type = "Checkbox",
