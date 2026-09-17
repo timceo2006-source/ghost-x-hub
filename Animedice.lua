@@ -1,3 +1,5 @@
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+
 local Window = WindUI:CreateWindow({
 	Title = "Ghost Hub",
 	Icon = "ghost",
@@ -14,9 +16,6 @@ local Window = WindUI:CreateWindow({
 	BackgroundImageTransparency = 0.42,
 	HideSearchBar = true,
 	ScrollBarEnabled = false,
-	User = {
-		Enabled = false,
-		Anonymous = false,
 		Callback = function()
 		end,
 	},
