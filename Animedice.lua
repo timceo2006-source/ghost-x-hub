@@ -16,21 +16,17 @@ local Window = WindUI:CreateWindow({
 	BackgroundImageTransparency = 0.42,
 	HideSearchBar = true,
 	ScrollBarEnabled = false,
-	User = {
-		Enabled = false,
-		Anonymous = false,
-		Callback = function()
-		end,
-	},
+	Callback = function()
+	end
 })
 
 local Tab = Window:Tab({
     Title = "Main",
-    Icon = "house", -- optional
+    Icon = "house",
     Locked = false,
 })
 
-local = Tab:Toggle({
+local AutoRollToggle = Tab:Toggle({
     Title = "Auto Roll",
     Desc = "Auto Roll Unit",
     Type = "Checkbox",
