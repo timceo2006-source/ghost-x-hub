@@ -36,29 +36,28 @@ local AutoRollToggle = Tab:Toggle({
     Type = "Checkbox",
     Value = false,
     Callback = function(state) 
-        isAutoRoll = state
-        
-        -- ส่งค่าเปิด/ปิดไปที่เกมโดยตรง
         pcall(function()
             local SetAutoRoll = RS:WaitForChild("Network"):WaitForChild("RollService"):WaitForChild("RE"):WaitForChild("SetAutoRoll")
             SetAutoRoll:FireServer(state)
         end)
         
-        -- ถ้ากดเปิด ให้ลูปซ่อน UI ตลอดเวลา
         if state then
             task.spawn(function()
-                while isAutoRoll do
-                    pcall(function()
-                        local Root = LocalPlayer.PlayerGui:FindFirstChild("Root")
-                        if Root and Root:FindFirstChild("Rolling") then
-                            if Root.Rolling.Visible then
-                                Root.Rolling.Visible = false
-                            end
-                        end
-                    end)
-                    task.wait(0.1)
-                end
+                task.wait(0.2)
+                pcall(function()
+                    local HiddenRoll = game:GetService("Players").LocalPlayer.PlayerGui.Root.Rolling.Options.HiddenRoll
+                    local GuiService = game:GetService("GuiService")
+                    local VIM = game:GetService("VirtualInputManager")
+                    
+                    GuiService.SelectedObject = HiddenRoll
+                    
+                    VIM:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+                    task.wait(0.05)
+                    VIM:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+                    
+                    GuiService.SelectedObject = nil
+                end)
             end)
         end
     end
-})
+})})
