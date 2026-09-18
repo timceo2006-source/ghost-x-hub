@@ -36,20 +36,19 @@ local AutoRollToggle = Tab:Toggle({
     Type = "Checkbox",
     Value = false,
     Callback = function(state) 
-        State.AutoRoll = state
+        isAutoRoll = state
         
+        -- ส่งค่าเปิด/ปิดไปที่เกมโดยตรง
+        pcall(function()
+            local SetAutoRoll = RS:WaitForChild("Network"):WaitForChild("RollService"):WaitForChild("RE"):WaitForChild("SetAutoRoll")
+            SetAutoRoll:FireServer(state)
+        end)
+        
+        -- ถ้ากดเปิด ให้ลูปซ่อน UI ตลอดเวลา
         if state then
             task.spawn(function()
-                local LocalPlayer = game:GetService("Players").LocalPlayer
-                
-                while State.AutoRoll do
+                while isAutoRoll do
                     pcall(function()
-                        -- 1. ยิงสุ่ม
-                        if RollService:FindFirstChild("RE") and RollService.RE:FindFirstChild("Roll") then
-                            RollService.RE.Roll:FireServer()
-                        end
-                        
-                        -- 2. จับหน้าจอสุ่มกดซ่อนทันที
                         local Root = LocalPlayer.PlayerGui:FindFirstChild("Root")
                         if Root and Root:FindFirstChild("Rolling") then
                             if Root.Rolling.Visible then
