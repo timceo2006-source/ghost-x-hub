@@ -1,5 +1,9 @@
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
 
+local RS = game:GetService("ReplicatedStorage")
+local LocalPlayer = game:GetService("Players").LocalPlayer
+local isAutoRoll = false 
+
 local Window = WindUI:CreateWindow({
 	Title = "Ghost Hub",
 	Icon = "ghost",
