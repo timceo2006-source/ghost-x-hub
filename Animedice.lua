@@ -1,19 +1,6 @@
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-
 local RS = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-
-local SetAutoRoll = RS:WaitForChild("Network"):WaitForChild("RollService"):WaitForChild("RE"):WaitForChild("SetAutoRoll")
-local RollingUI = LocalPlayer.PlayerGui:WaitForChild("Root"):WaitForChild("Rolling")
-
-local isAutoRolling = false
-
-RollingUI:GetPropertyChangedSignal("Visible"):Connect(function()
-    if isAutoRolling and RollingUI.Visible then
-        RollingUI.Visible = false
-    end
-end)
+local LocalPlayer = game:GetService("Players").LocalPlayer
 
 local Window = WindUI:CreateWindow({
 	Title = "Ghost Hub",
@@ -30,9 +17,7 @@ local Window = WindUI:CreateWindow({
 	SideBarWidth = 200,
 	BackgroundImageTransparency = 0.42,
 	HideSearchBar = true,
-	ScrollBarEnabled = false,
-	Callback = function()
-	end
+	ScrollBarEnabled = false
 })
 
 local Tab = Window:Tab({
@@ -47,14 +32,23 @@ local AutoRollToggle = Tab:Toggle({
     Type = "Checkbox",
     Value = false,
     Callback = function(state) 
-        isAutoRolling = state
-        
         pcall(function()
+            local SetAutoRoll = RS:WaitForChild("Network"):WaitForChild("RollService"):WaitForChild("RE"):WaitForChild("SetAutoRoll")
             SetAutoRoll:FireServer(state)
+            
+            if state then
+                local HiddenRoll = LocalPlayer.PlayerGui.Root.Rolling.Options.HiddenRoll
+                
+                if getconnections then
+                    for _, connection in pairs(getconnections(HiddenRoll.MouseButton1Click)) do
+                        connection:Fire()
+                    end
+                elseif firesignal then
+                    firesignal(HiddenRoll.MouseButton1Click)
+                end
+                
+                LocalPlayer.PlayerGui.Root.Rolling.Visible = false
+            end
         end)
-        
-        if state and RollingUI then
-            RollingUI.Visible = false
-        end
     end
 })
