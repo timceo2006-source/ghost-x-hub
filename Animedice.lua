@@ -37,20 +37,20 @@ local AutoRollToggle = Tab:Toggle({
     Type = "Checkbox",
     Value = false,
     Callback = function(state) 
-        if state then
-            pcall(function()
-                SetAutoRoll:FireServer(true)
-                local rootUI = LocalPlayer.PlayerGui:FindFirstChild("Root")
-                if rootUI and rootUI:FindFirstChild("Rolling") then
-                    local hiddenBtn = rootUI.Rolling:FindFirstChild("Options") and rootUI.Rolling.Options:FindFirstChild("HiddenRoll")
-                    if hiddenBtn and getconnections then
-                        for _, connection in pairs(getconnections(hiddenBtn.MouseButton1Click)) do
-                            connection:Fire()
-                        end
+        pcall(function()
+            SetAutoRoll:FireServer(state)
+            
+            if state then
+                local HiddenRoll = LocalPlayer.PlayerGui.Root.Rolling.Options.HiddenRoll
+                
+                if getconnections then
+                    for _, v in pairs(getconnections(HiddenRoll.MouseButton1Click)) do
+                        v:Fire()
                     end
-                    rootUI.Rolling.Visible = false
+                elseif firesignal then
+                    firesignal(HiddenRoll.MouseButton1Click)
                 end
-            end)
-        end
+            end
+        end)
     end
 })
