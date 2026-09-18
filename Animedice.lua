@@ -60,4 +60,4 @@ local AutoRollToggle = Tab:Toggle({
             end)
         end
     end
-})})
+})
