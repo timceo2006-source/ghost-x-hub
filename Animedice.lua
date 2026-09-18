@@ -1,4 +1,6 @@
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+local RS = game:GetService("ReplicatedStorage")
+local SetAutoRoll = RS:WaitForChild("Network"):WaitForChild("RollService"):WaitForChild("RE"):WaitForChild("SetAutoRoll")
 
 local Window = WindUI:CreateWindow({
 	Title = "Ghost Hub",
@@ -32,18 +34,9 @@ local AutoRollToggle = Tab:Toggle({
     Type = "Checkbox",
     Value = false,
     Callback = function(state) 
-        State.AutoRoll = state
-        
         if state then
-            task.spawn(function()
-                while State.AutoRoll do
-                    pcall(function()
-                        if RollService:FindFirstChild("RE") and RollService.RE:FindFirstChild("Roll") then
-                            RollService.RE.Roll:FireServer()
-                        end
-                    end)
-                    task.wait(0.1)
-                end
+            pcall(function()
+                SetAutoRoll:FireServer(true)
             end)
         end
     end
