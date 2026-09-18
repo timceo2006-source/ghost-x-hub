@@ -1,6 +1,4 @@
 local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-local RS = game:GetService("ReplicatedStorage")
-local LocalPlayer = game:GetService("Players").LocalPlayer
 
 local Window = WindUI:CreateWindow({
 	Title = "Ghost Hub",
@@ -17,7 +15,9 @@ local Window = WindUI:CreateWindow({
 	SideBarWidth = 200,
 	BackgroundImageTransparency = 0.42,
 	HideSearchBar = true,
-	ScrollBarEnabled = false
+	ScrollBarEnabled = false,
+	Callback = function()
+	end
 })
 
 local Tab = Window:Tab({
@@ -32,23 +32,30 @@ local AutoRollToggle = Tab:Toggle({
     Type = "Checkbox",
     Value = false,
     Callback = function(state) 
-        pcall(function()
-            local SetAutoRoll = RS:WaitForChild("Network"):WaitForChild("RollService"):WaitForChild("RE"):WaitForChild("SetAutoRoll")
-            SetAutoRoll:FireServer(state)
-            
-            if state then
-                local HiddenRoll = LocalPlayer.PlayerGui.Root.Rolling.Options.HiddenRoll
+        State.AutoRoll = state
+        
+        if state then
+            task.spawn(function()
+                local LocalPlayer = game:GetService("Players").LocalPlayer
                 
-                if getconnections then
-                    for _, connection in pairs(getconnections(HiddenRoll.MouseButton1Click)) do
-                        connection:Fire()
-                    end
-                elseif firesignal then
-                    firesignal(HiddenRoll.MouseButton1Click)
+                while State.AutoRoll do
+                    pcall(function()
+                        -- 1. ยิงสุ่ม
+                        if RollService:FindFirstChild("RE") and RollService.RE:FindFirstChild("Roll") then
+                            RollService.RE.Roll:FireServer()
+                        end
+                        
+                        -- 2. จับหน้าจอสุ่มกดซ่อนทันที
+                        local Root = LocalPlayer.PlayerGui:FindFirstChild("Root")
+                        if Root and Root:FindFirstChild("Rolling") then
+                            if Root.Rolling.Visible then
+                                Root.Rolling.Visible = false
+                            end
+                        end
+                    end)
+                    task.wait(0.1)
                 end
-                
-                LocalPlayer.PlayerGui.Root.Rolling.Visible = false
-            end
-        end)
+            end)
+        end
     end
 })
