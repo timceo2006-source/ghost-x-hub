@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 echo "Installing packages..."
@@ -62,11 +61,12 @@ echo "Creating start.sh..."
 cat << 'EOF' > start.sh
 #!/bin/bash
 echo "Clearing old processes..."
+fuser -k -9 5000/tcp 2>/dev/null
 killall -9 python 2>/dev/null
 pkill -9 -f python
 killall -9 ssh 2>/dev/null
 killall -9 node 2>/dev/null
-sleep 1
+sleep 2
 
 echo "Starting server..."
 python server.py &
