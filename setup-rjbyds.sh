@@ -1,3 +1,12 @@
+#!/bin/bash
+
+echo "Installing packages..."
+pkg update -y > /dev/null 2>&1
+pkg install python openssh psmisc lsof ncurses-utils curl -y > /dev/null 2>&1
+pip install flask > /dev/null 2>&1
+
+echo "Creating server.py..."
+cat << 'EOF' > server.py
 from flask import Flask, request
 import time
 import threading
@@ -248,3 +257,311 @@ def auto_rejoin_checker():
 if __name__ == '__main__':
     threading.Thread(target=auto_rejoin_checker, daemon=True).start()
     app.run(host='0.0.0.0', port=5000)
+EOF
+
+echo "Creating checker.sh..."
+cat << 'EOF' > checker.sh
+#!/bin/bash
+CONFIG_DIR="/storage/emulated/0/GhostXHub"
+GREEN="\e[32m"
+RED="\e[31m"
+YELLOW="\e[33m"
+CYAN="\e[36m"
+RESET="\e[0m"
+
+check_cookie() {
+    local cookie="$1"
+    local name="$2"
+    local response=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "Cookie: .ROBLOSECURITY=$cookie" \
+        -H "User-Agent: Roblox/Android" \
+        "https://users.roblox.com/v1/users/authenticated")
+    
+    if [ "$response" == "200" ]; then
+        local user_info=$(curl -s \
+            -H "Cookie: .ROBLOSECURITY=$cookie" \
+            -H "User-Agent: Roblox/Android" \
+            "https://users.roblox.com/v1/users/authenticated")
+        local username=$(echo "$user_info" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+        local display=$(echo "$user_info" | grep -o '"displayName":"[^"]*"' | cut -d'"' -f4)
+        echo -e "  ${GREEN}✓ VALID${RESET}   [$name] => ${CYAN}${display} (@${username})${RESET}"
+        return 0
+    elif [ "$response" == "401" ]; then
+        echo -e "  ${RED}✗ EXPIRED${RESET} [$name] => Cookie is dead"
+        return 1
+    else
+        echo -e "  ${YELLOW}? UNKNOWN${RESET} [$name] => HTTP $response"
+        return 2
+    fi
+}
+
+check_normal_mode() {
+    stty sane 2>/dev/null
+    clear
+    echo -e "${CYAN}====================================${RESET}"
+    echo -e "${YELLOW}  Checking Normal Mode Cookies${RESET}"
+    echo -e "${CYAN}====================================${RESET}\n"
+
+    if [ ! -f "$CONFIG_DIR/cookie.txt" ]; then
+        echo -e "${RED}  No cookie.txt found!${RESET}"
+        sleep 3
+        return
+    fi
+
+    local i=1
+    while IFS= read -r cookie; do
+        if [ -n "$cookie" ]; then
+            check_cookie "$cookie" "Clone_$i"
+        fi
+        i=$((i+1))
+    done < "$CONFIG_DIR/cookie.txt"
+
+    echo -e "\n${YELLOW}  Done. Press [ENTER] to return...${RESET}"
+    read -r
+}
+
+check_switch_mode() {
+    stty sane 2>/dev/null
+    clear
+    echo -e "${CYAN}====================================${RESET}"
+    echo -e "${YELLOW}  Checking Auto-Switch Cookies${RESET}"
+    echo -e "${CYAN}====================================${RESET}\n"
+
+    if [ ! -d "$CONFIG_DIR/AutoSwitch" ]; then
+        echo -e "${RED}  No AutoSwitch folder found!${RESET}"
+        sleep 3
+        return
+    fi
+
+    for file in "$CONFIG_DIR/AutoSwitch"/*.txt; do
+        if [ -f "$file" ]; then
+            local clone_name=$(basename "$file" .txt)
+            echo -e "${CYAN}--- $clone_name ---${RESET}"
+            while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                    local cookie=$(echo "$line" | awk -F':' '{print $NF}')
+                    local acc_name=$(echo "$line" | awk -F':' '{print $1}')
+                    check_cookie "$cookie" "$acc_name"
+                fi
+            done < "$file"
+            echo ""
+        fi
+    done
+
+    echo -e "${YELLOW}  Done. Press [ENTER] to return...${RESET}"
+    read -r
+}
+
+check_all_mode() {
+    stty sane 2>/dev/null
+    clear
+    echo -e "${CYAN}====================================${RESET}"
+    echo -e "${YELLOW}  Checking ALL Cookies${RESET}"
+    echo -e "${CYAN}====================================${RESET}\n"
+
+    if [ -f "$CONFIG_DIR/cookie.txt" ]; then
+        echo -e "${GREEN}[Normal Mode]${RESET}"
+        local i=1
+        while IFS= read -r cookie; do
+            if [ -n "$cookie" ]; then
+                check_cookie "$cookie" "Clone_$i"
+            fi
+            i=$((i+1))
+        done < "$CONFIG_DIR/cookie.txt"
+        echo ""
+    fi
+
+    if [ -d "$CONFIG_DIR/AutoSwitch" ]; then
+        echo -e "${GREEN}[Auto-Switch Mode]${RESET}"
+        for file in "$CONFIG_DIR/AutoSwitch"/*.txt; do
+            if [ -f "$file" ]; then
+                local clone_name=$(basename "$file" .txt)
+                echo -e "${CYAN}--- $clone_name ---${RESET}"
+                while IFS= read -r line; do
+                    if [ -n "$line" ]; then
+                        local cookie=$(echo "$line" | awk -F':' '{print $NF}')
+                        local acc_name=$(echo "$line" | awk -F':' '{print $1}')
+                        check_cookie "$cookie" "$acc_name"
+                    fi
+                done < "$file"
+            fi
+        done
+    fi
+
+    echo -e "\n${YELLOW}  Done. Press [ENTER] to return...${RESET}"
+    read -r
+}
+EOF
+chmod +x checker.sh
+
+echo "Creating start.sh..."
+cat << 'EOF' > start.sh
+#!/bin/bash
+CONFIG_DIR="/storage/emulated/0/GhostXHub"
+SWITCH_DIR="$CONFIG_DIR/AutoSwitch"
+su -c "mkdir -p $CONFIG_DIR" 2>/dev/null
+mkdir -p "$CONFIG_DIR" 2>/dev/null
+mkdir -p "$SWITCH_DIR" 2>/dev/null
+
+if [ ! -f "$CONFIG_DIR/settings.txt" ]; then
+    echo "CHECK_INTERVAL=30" > "$CONFIG_DIR/settings.txt"
+    echo "TIMEOUT=40" >> "$CONFIG_DIR/settings.txt"
+    echo "LAUNCH_DELAY=20" >> "$CONFIG_DIR/settings.txt"
+fi
+
+GREEN="\e[32m"
+RED="\e[31m"
+YELLOW="\e[33m"
+CYAN="\e[36m"
+RESET="\e[0m"
+
+stty sane 2>/dev/null
+tput reset 2>/dev/null
+clear
+
+echo -e "${YELLOW}Initializing Ghost X Hub...${RESET}"
+kill -9 $(lsof -t -i:5000) 2>/dev/null
+su -c 'kill -9 $(lsof -t -i:5000)' 2>/dev/null
+fuser -k -9 5000/tcp 2>/dev/null
+killall -9 python 2>/dev/null
+pkill -9 -f python
+killall -9 ssh 2>/dev/null
+rm -f "$CONFIG_DIR/tunnel.log"
+
+echo -e "${CYAN}Establishing Secure Tunnel...${RESET}"
+ssh -o StrictHostKeyChecking=no -R 80:localhost:5000 serveo.net > "$CONFIG_DIR/tunnel.log" 2>&1 &
+
+for i in {1..10}; do
+    url=$(grep -Eo 'https://[^ ]+\.serveousercontent\.com' "$CONFIG_DIR/tunnel.log" | head -n 1)
+    if [ -n "$url" ]; then
+        su -c "echo '$url' > /storage/emulated/0/Delta/Workspace/server_url.txt"
+        break
+    fi
+    sleep 1
+done
+
+source ./checker.sh
+
+scan_apps() {
+    stty sane 2>/dev/null
+    clear
+    echo -e "${CYAN}====================================${RESET}"
+    echo -e "${YELLOW}  Scanning for Roblox Apps...${RESET}"
+    echo -e "${CYAN}====================================${RESET}"
+
+    > "$CONFIG_DIR/apps.txt"
+    su -c 'pm list packages' | grep -i roblox | cut -d':' -f2 | tr -d '\r' | tr -d ' ' > "$CONFIG_DIR/apps.txt"
+
+    app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
+    if [ "$app_count" -gt 0 ]; then
+        echo -e "${GREEN}  Found $app_count App(s):${RESET}"
+        local i=1
+        while IFS= read -r pkg; do
+            if [ -n "$pkg" ]; then
+                echo -e "  [$i] ${GREEN}$pkg${RESET}"
+                i=$((i+1))
+            fi
+        done < "$CONFIG_DIR/apps.txt"
+    else
+        echo -e "${RED}  Warning: No apps found!${RESET}"
+        echo "com.roblox.client" > "$CONFIG_DIR/apps.txt"
+        echo -e "  [1] Default: com.roblox.client"
+    fi
+
+    echo -e "\n${YELLOW}  Returning to menu in 3 seconds...${RESET}"
+    sleep 3
+}
+
+if [ ! -f "$CONFIG_DIR/apps.txt" ]; then
+    scan_apps
+fi
+
+while true; do
+    stty sane 2>/dev/null
+    clear
+
+    SWITCH_STATUS=$(cat "$CONFIG_DIR/switch_status.txt" 2>/dev/null || echo "OFF")
+    if [ "$SWITCH_STATUS" == "ON" ]; then
+        MODE_COLOR="${GREEN}ON${RESET}"
+    else
+        MODE_COLOR="${RED}OFF${RESET}"
+    fi
+
+    echo -e "${GREEN}====================================${RESET}"
+    echo -e "${GREEN}          GHOST X HUB MENU          ${RESET}"
+    echo -e "${GREEN}====================================${RESET}"
+    echo -e "  [Current Mode: Auto-Switch is $MODE_COLOR]"
+    echo -e "${GREEN}====================================${RESET}"
+    echo -e "  [1] Start System"
+    echo -e "  [2] Refresh/Scan Roblox Apps"
+    echo -e "  [3] Setup Cookies & Map Config"
+    echo -e "  [4] Tool Settings (Timeouts/Delays)"
+    echo -e "  [5] Check Cookie Health"
+    echo -e "  [6] Kill All Roblox Apps"
+    echo -e "  [7] Toggle Auto-Switch Mode"
+    echo -e "  [0] Exit"
+    echo -e "${GREEN}====================================${RESET}"
+    read -p "  Select Option: " opt
+
+    case $opt in
+        1)
+            app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
+            if [ "$SWITCH_STATUS" == "OFF" ]; then
+                cookie_count=$(grep -c . "$CONFIG_DIR/cookie.txt" 2>/dev/null || echo 0)
+                if [ "$cookie_count" -lt "$app_count" ] || [ "$cookie_count" -eq 0 ]; then
+                    echo -e "\n${RED}  [Error] Normal mode: Missing cookies!${RESET}"
+                    sleep 3
+                    continue
+                fi
+            else
+                if [ ! -f "$SWITCH_DIR/clone_1.txt" ]; then
+                    echo -e "\n${RED}  [Error] Switch mode: No combo files found!${RESET}"
+                    sleep 3
+                    continue
+                fi
+            fi
+
+            stty sane 2>/dev/null
+            clear
+
+            python -u server.py &
+            PY_PID=$!
+
+            echo -e "\n${CYAN}====================================${RESET}"
+            echo -e "${GREEN}  ▶ SYSTEM IS RUNNING!${RESET}"
+            echo -e "${YELLOW}  Mode: $( [ "$SWITCH_STATUS" == "ON" ] && echo "Auto-Switch" || echo "Normal" )${RESET}"
+            echo -e "${YELLOW}  Press [ENTER] to STOP and return to Menu${RESET}"
+            echo -e "${CYAN}====================================${RESET}\n"
+
+            read -r
+
+            echo -e "${RED}Stopping System...${RESET}"
+            kill -9 $PY_PID 2>/dev/null
+            pkill -9 -f server.py 2>/dev/null
+            sleep 1
+            ;;
+        2)
+            scan_apps
+            ;;
+        3)
+            stty sane 2>/dev/null
+            clear
+            app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
+            echo -e "${CYAN}====================================${RESET}"
+            echo -e "${YELLOW}  Setup Normal Cookies for $app_count Clones${RESET}"
+            echo -e "${CYAN}====================================${RESET}"
+
+            > "$CONFIG_DIR/cookie.txt"
+
+            for i in $(seq 1 $app_count); do
+                pkg=$(sed -n "${i}p" "$CONFIG_DIR/apps.txt")
+                echo -e "\n${GREEN}Clone $i (${pkg})${RESET}"
+                read -p "  Paste Cookie: " cookie_data </dev/tty
+                echo "$cookie_data" >> "$CONFIG_DIR/cookie.txt"
+            done
+
+            echo -e "\n${CYAN}====================================${RESET}"
+            read -p "  Enter Map ID (Leave blank to skip): " map_data </dev/tty
+            if [ -n "$map_data" ]; then
+                echo "$map_data" > "$CONFIG_DIR/map.txt"
+        
