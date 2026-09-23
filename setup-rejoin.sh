@@ -2,7 +2,8 @@
 
 echo "Installing packages..."
 pkg update -y > /dev/null 2>&1
-pkg install python openssh psmisc -y > /dev/null 2>&1
+# เพิ่ม lsof เข้าไปในชุดติดตั้ง
+pkg install python openssh psmisc lsof -y > /dev/null 2>&1
 pip install flask > /dev/null 2>&1
 
 echo "Creating server.py..."
@@ -59,6 +60,10 @@ echo "Creating start.sh..."
 cat << 'EOF' > start.sh
 #!/bin/bash
 echo "Clearing old processes..."
+# ท่าไม้ตาย: เล็งเป้าเตะเฉพาะคนที่ถือพอร์ต 5000 (ทั้งแบบปกติและแบบ Root)
+kill -9 $(lsof -t -i:5000) 2>/dev/null
+su -c 'kill -9 $(lsof -t -i:5000)' 2>/dev/null
+
 fuser -k -9 5000/tcp 2>/dev/null
 killall -9 python 2>/dev/null
 pkill -9 -f python
