@@ -93,6 +93,8 @@ scan_apps() {
     echo -e "${YELLOW}  Scanning for Roblox Apps...${RESET}"
     echo -e "${CYAN}====================================${RESET}"
     
+    # เคลียร์ไฟล์เก่าทิ้งก่อนสแกนใหม่
+    > "$CONFIG_DIR/apps.txt"
     su -c 'pm list packages | grep -i roblox' | cut -d':' -f2 > "$CONFIG_DIR/apps.txt"
     
     app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
@@ -157,13 +159,14 @@ while true; do
             local i=1
             while IFS= read -r pkg; do
                 echo -e "\n${GREEN}Clone $i (${pkg})${RESET}"
-                read -p "  Paste Cookie: " cookie_data
+                # แก้บัคตรงนี้: บังคับให้รับค่าจากคีย์บอร์ดโดยตรง
+                read -p "  Paste Cookie: " cookie_data </dev/tty
                 echo "$cookie_data" >> "$CONFIG_DIR/cookie.txt"
                 i=$((i+1))
             done < "$CONFIG_DIR/apps.txt"
             
             echo -e "\n${CYAN}====================================${RESET}"
-            read -p "  Enter Map ID (Optional): " map_data
+            read -p "  Enter Map ID (Optional): " map_data </dev/tty
             echo "$map_data" > "$CONFIG_DIR/map.txt"
             
             echo -e "\n${GREEN}  Config saved successfully!${RESET}"
