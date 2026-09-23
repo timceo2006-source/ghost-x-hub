@@ -169,33 +169,31 @@ def auto_rejoin_checker():
                     
                     package_name = APPS_PACKAGE_NAMES.get(clone_id)
                     if package_name:
-                        os.system(f"su -c 'am force-stop {package_name}'")
+                        # ==========================================
+                        # 1. ล้างข้อมูลแอปแบบ 100% (ล้างแคช, ล้างประวัติไอดี เสมือนแอปใหม่)
+                        os.system(f"su -c 'pm clear {package_name}'")
                         time.sleep(2)
-                        
-                        # ==========================================
-                        # แก้บัคหน้าจอ Account Switcher แบบถอนรากถอนโคน
-                        xml_dir = f"/data/data/{package_name}/shared_prefs"
-                        xml_path = f"{xml_dir}/com.roblox.client_preferences.xml"
-                        
-                        # สั่งลบประวัติบัญชีเก่าทั้งหมดให้เกลี้ยง
-                        os.system(f"su -c 'rm -f {xml_dir}/*'")
-                        os.system(f"su -c 'mkdir -p {xml_dir}'")
-                        os.system(f"su -c 'chmod 777 {xml_dir}'")
-                        # ==========================================
                         
                         acc_name, acc_cookie = get_cookie_and_name(clone_id)
                         if acc_cookie:
                             print(f"{CYAN}  ↳ Injecting Cookie: {acc_name}{RESET}", flush=True)
+                            
+                            xml_dir = f"/data/data/{package_name}/shared_prefs"
+                            xml_path = f"{xml_dir}/com.roblox.client_preferences.xml"
+                            
                             xml_content = f"<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <string name=\".ROBLOSECURITY\">{acc_cookie}</string>\n</map>"
                             tmp_path = f"/storage/emulated/0/GhostXHub/tmp_{clone_id}.xml"
                             
                             with open(tmp_path, "w") as tf:
                                 tf.write(xml_content)
                             
-                            # ใช้ cat เขียนทับเพื่อป้องกันปัญหา SELinux Permission
+                            # 2. สร้างโฟลเดอร์ขึ้นมาใหม่ ยัดคุกกี้ และเปิดสิทธิ์ 777 ให้แอปอ่านได้ 100%
+                            os.system(f"su -c 'mkdir -p {xml_dir}'")
+                            os.system(f"su -c 'chmod 777 {xml_dir}'")
                             os.system(f"su -c 'cat {tmp_path} > {xml_path}'")
                             os.system(f"su -c 'chmod 777 {xml_path}'")
                             os.system(f"rm {tmp_path}")
+                        # ==========================================
                         
                         map_id = get_map_id()
                         if map_id:
@@ -207,7 +205,7 @@ def auto_rejoin_checker():
                             print(f"{YELLOW}  ↳ Cooldown: Waiting {cfg['LAUNCH_DELAY']}s before next action...{RESET}", flush=True)
                             time.sleep(cfg["LAUNCH_DELAY"])
                             
-                    clients_last_seen[clone_id] = time.time() + 30 
+                    clients_last_seen[clone_id] = time.time() + 40 # เผื่อเวลาเปิดแอปใหม่นานขึ้นนิดนึง
                     clients_retry_count[clone_id] = retry_count + 1
                 else:
                     print(f"{RED}[{display_name}] Suspended for 5 mins.{RESET}", flush=True)
@@ -281,7 +279,7 @@ scan_apps() {
         local i=1
         while IFS= read -r pkg; do
             if [ -n "$pkg" ]; then
-                echo -e "  [$i] ${GREEN}$pkg${RESET}"
+                echo -e "  [$i]${GREEN}$pkg${RESET}"
                 i=$((i+1))
             fi
         done < "$CONFIG_DIR/apps.txt"
@@ -311,7 +309,7 @@ while true; do
     fi
 
     echo -e "${GREEN}====================================${RESET}"
-    echo -e "${GREEN}          GHOST X HUB MENU          ${RESET}"
+    echo -e "${GREEN}          GHOST X HUB MENU${RESET}"
     echo -e "${GREEN}====================================${RESET}"
     echo -e "  [Current Mode: Auto-Switch is $MODE_COLOR]"
     echo -e "${GREEN}====================================${RESET}"
@@ -330,7 +328,7 @@ while true; do
             app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
             if [ "$SWITCH_STATUS" == "OFF" ]; then
                 cookie_count=$(grep -c . "$CONFIG_DIR/cookie.txt" 2>/dev/null || echo 0)
-                if [ "$cookie_count" -lt "$app_count" ] || [ "$cookie_count" -eq 0 ]; then
+                if [ "$cookie_count" -lt "$app_count" ] \vert{}\vert{} [ "$cookie_count" -eq 0 ]; then
                     echo -e "\n${RED}  [Error] Normal mode: Missing cookies!${RESET}"
                     sleep 3
                     continue
@@ -351,7 +349,7 @@ while true; do
             
             echo -e "\n${CYAN}====================================${RESET}"
             echo -e "${GREEN}  ▶ SYSTEM IS RUNNING!${RESET}"
-            echo -e "${YELLOW}  Mode: $( [ "$SWITCH_STATUS" == "ON" ] && echo "Auto-Switch" || echo "Normal" )${RESET}"
+            echo -e "${YELLOW}  Mode:$( [ "$SWITCH_STATUS" == "ON" ] && echo "Auto-Switch" \vert{}\vert{} echo "Normal" )${RESET}"
             echo -e "${YELLOW}  Press [ENTER] to STOP and return to Menu${RESET}"
             echo -e "${CYAN}====================================${RESET}\n"
             
@@ -375,9 +373,9 @@ while true; do
             
             > "$CONFIG_DIR/cookie.txt" 
             
-            for i in $(seq 1 $app_count); do
+            for i in $(seq 1$app_count); do
                 pkg=$(sed -n "${i}p" "$CONFIG_DIR/apps.txt")
-                echo -e "\n${GREEN}Clone $i (${pkg})${RESET}"
+                echo -e "\n${GREEN}Clone$i (${pkg})${RESET}"
                 read -p "  Paste Cookie: " cookie_data </dev/tty
                 echo "$cookie_data" >> "$CONFIG_DIR/cookie.txt"
             done
@@ -427,7 +425,7 @@ while true; do
             if [ "$SWITCH_STATUS" == "OFF" ]; then
                 echo "ON" > "$CONFIG_DIR/switch_status.txt"
                 app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
-                for i in $(seq 1 $app_count); do
+                for i in $(seq 1$app_count); do
                     touch "$SWITCH_DIR/clone_${i}.txt"
                 done
                 echo -e "${CYAN}====================================${RESET}"
@@ -436,26 +434,5 @@ while true; do
                 echo -e "\n${YELLOW}  Format => Username:Password:Cookie${RESET}"
                 echo -e "${CYAN}====================================${RESET}"
             else
-                echo "OFF" > "$CONFIG_DIR/switch_status.txt"
-                echo -e "${CYAN}====================================${RESET}"
-                echo -e "${RED}  Auto-Switch Mode: DISABLED!${RESET}"
-                echo -e "${CYAN}====================================${RESET}"
-            fi
-            read -p "  Press [ENTER] to return..." </dev/tty
-            ;;
-        0)
-            stty sane 2>/dev/null
-            clear
-            exit 0
-            ;;
-        *)
-            echo -e "\n${RED}  Invalid Option!${RESET}"
-            sleep 1
-            ;;
-    esac
-done
-EOF
-
-chmod +x start.sh
-
-echo -e "\e[32mSetup complete. Run 'bash start.sh' to open menu.\e[0m"
+                echo "OFF" > "$CONFIG_DIR/switch_status.txt
+                
