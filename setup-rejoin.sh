@@ -93,18 +93,13 @@ scan_apps() {
     echo -e "${YELLOW}  Scanning for Roblox Apps...${RESET}"
     echo -e "${CYAN}====================================${RESET}"
     
-    # เคลียร์ไฟล์เก่าทิ้งก่อนสแกนใหม่
-    > "$CONFIG_DIR/apps.txt"
-    su -c 'pm list packages | grep -i roblox' | cut -d':' -f2 > "$CONFIG_DIR/apps.txt"
+    # ดึงชื่อแอปและลบตัวอักษรซ่อนเร้น (\r) ที่ทำให้สคริปต์บัคทิ้งให้หมด
+    su -c 'pm list packages | grep com.roblox' | cut -d':' -f2 | tr -d '\r' > "$CONFIG_DIR/apps.txt"
     
-    app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
+    app_count=$(cat "$CONFIG_DIR/apps.txt" | wc -l)
     if [ "$app_count" -gt 0 ]; then
         echo -e "${GREEN}  Found $app_count App(s):${RESET}"
-        local i=1
-        while IFS= read -r pkg; do
-            echo -e "  [$i] ${GREEN}$pkg${RESET}"
-            i=$((i+1))
-        done < "$CONFIG_DIR/apps.txt"
+        cat "$CONFIG_DIR/apps.txt" | awk '{print "  ["NR"] \033[92m" $0 "\033[0m"}'
     else
         echo -e "${RED}  Warning: No apps found!${RESET}"
         echo "com.roblox.client" > "$CONFIG_DIR/apps.txt"
@@ -133,7 +128,7 @@ while true; do
 
     case $opt in
         1)
-            app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
+            app_count=$(cat "$CONFIG_DIR/apps.txt" | wc -l)
             cookie_count=$(grep -c . "$CONFIG_DIR/cookie.txt" 2>/dev/null || echo 0)
             
             if [ "$cookie_count" -lt "$app_count" ] || [ "$cookie_count" -eq 0 ]; then
@@ -149,25 +144,27 @@ while true; do
             ;;
         3)
             clear
-            app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
+            app_count=$(cat "$CONFIG_DIR/apps.txt" | wc -l)
             echo -e "${CYAN}====================================${RESET}"
             echo -e "${YELLOW}  Setup Cookies for $app_count Clones${RESET}"
             echo -e "${CYAN}====================================${RESET}"
             
             > "$CONFIG_DIR/cookie.txt" 
             
-            local i=1
-            while IFS= read -r pkg; do
+            # เปลี่ยนมาใช้ for loop ป้องกันบัคข้ามบรรทัด
+            for i in $(seq 1 $app_count); do
+                pkg=$(sed -n "${i}p" "$CONFIG_DIR/apps.txt")
                 echo -e "\n${GREEN}Clone $i (${pkg})${RESET}"
-                # แก้บัคตรงนี้: บังคับให้รับค่าจากคีย์บอร์ดโดยตรง
-                read -p "  Paste Cookie: " cookie_data </dev/tty
+                read -p "  Paste Cookie: " cookie_data
                 echo "$cookie_data" >> "$CONFIG_DIR/cookie.txt"
-                i=$((i+1))
-            done < "$CONFIG_DIR/apps.txt"
+            done
             
             echo -e "\n${CYAN}====================================${RESET}"
-            read -p "  Enter Map ID (Optional): " map_data </dev/tty
-            echo "$map_data" > "$CONFIG_DIR/map.txt"
+            echo -e "${YELLOW}*Tip: You can edit map.txt directly in folder: GhostXHub${RESET}"
+            read -p "  Enter Map ID (Leave blank to skip): " map_data
+            if [ -n "$map_data" ]; then
+                echo "$map_data" > "$CONFIG_DIR/map.txt"
+            fi
             
             echo -e "\n${GREEN}  Config saved successfully!${RESET}"
             sleep 2
