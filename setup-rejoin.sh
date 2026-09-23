@@ -143,14 +143,11 @@ def auto_rejoin_checker():
         current_time = time.time()
         cfg = get_settings()
         
-        # ระบบกระดานแจ้งสถานะตามรอบเวลา (Check Interval)
         if current_time - last_report_time >= cfg["CHECK_INTERVAL"]:
             print(f"\n{CYAN}--- [ STATUS REPORT ] ---{RESET}")
             for cid in APPS_PACKAGE_NAMES.keys():
                 l_seen = clients_last_seen.get(cid, 0)
                 d_name = clients_usernames.get(cid, cid)
-                
-                # ถ้าเพิ่งเปิดเกม (ให้เวลาหายใจ 60 วิ) หรือ มีสัญญาณมาปกติ
                 if l_seen == 0 or (current_time - l_seen) > cfg["TIMEOUT"]:
                     print(f"{RED}✗ [{d_name}] OFFLINE (Rejoining soon...){RESET}")
                 else:
@@ -158,7 +155,6 @@ def auto_rejoin_checker():
             print(f"{CYAN}-------------------------{RESET}\n", flush=True)
             last_report_time = current_time
 
-        # ระบบเช็คหลุดและปลุกผี
         for clone_id, last_seen in list(clients_last_seen.items()):
             if current_time - last_seen > cfg["TIMEOUT"]:
                 retry_count = clients_retry_count.get(clone_id, 0)
@@ -176,24 +172,44 @@ def auto_rejoin_checker():
                         os.system(f"su -c 'am force-stop {package_name}'")
                         time.sleep(2)
                         
-                        # 2. ลบคุกกี้เก่าแบบถอนราก และ ยัดคุกกี้ใหม่
-                        xml_dir = f"/data/data/{package_name}/shared_prefs"
-                        xml_path = f"{xml_dir}/com.roblox.client_preferences.xml"
-                        os.system(f"su -c 'rm -f {xml_path}'") # ลบของเก่าทิ้ง
-                        
                         acc_name, acc_cookie = get_cookie_and_name(clone_id)
                         if acc_cookie:
                             print(f"{CYAN}  ↳ Injecting Cookie: {acc_name}{RESET}", flush=True)
-                            xml_content = f"<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <string name=\".ROBLOSECURITY\">{acc_cookie}</string>\n</map>"
-                            tmp_path = f"/storage/emulated/0/GhostXHub/tmp_{clone_id}.xml"
                             
+                            # สคริปต์ทะลวง Cache และสวมรอย Permission ของแอป
+                            inject_script = f"""#!/bin/sh
+pkg_dir="/data/data/{package_name}"
+prefs_dir="$pkg_dir/shared_prefs"
+xml_file="$prefs_dir/com.roblox.client_preferences.xml"
+
+# ระเบิด Cache ของเก่าทิ้ง (สำคัญมาก ป้องกันไอดีเก่าค้าง)
+rm -rf "$pkg_dir/app_webview"
+rm -rf "$pkg_dir/cache"
+
+# สร้างโฟลเดอร์ prefs
+mkdir -p "$prefs_dir"
+
+# เขียนไฟล์คุกกี้ใหม่
+cat << 'EOF2' > "$xml_file"
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name=".ROBLOSECURITY">{acc_cookie}</string>
+</map>
+EOF2
+
+# สวมรอยสิทธิ์ให้ตัวเกมสามารถอ่านไฟล์นี้ได้ (แก้บัคเกมไม่อ่านคุกกี้)
+APP_USER=$(ls -ld "$pkg_dir" | awk '{{print $3}}')
+chown $APP_USER:$APP_USER "$xml_file"
+chmod 660 "$xml_file"
+chown $APP_USER:$APP_USER "$prefs_dir"
+chmod 771 "$prefs_dir"
+"""
+                            tmp_path = f"/storage/emulated/0/GhostXHub/inj_{clone_id}.sh"
                             with open(tmp_path, "w") as tf:
-                                tf.write(xml_content)
+                                tf.write(inject_script)
                             
-                            os.system(f"su -c 'mkdir -p {xml_dir}'")
-                            os.system(f"su -c 'cp {tmp_path} {xml_path}'")
-                            os.system(f"su -c 'chmod 666 {xml_path}'")
-                            os.system(f"rm {tmp_path}")
+                            os.system(f"su -c 'sh {tmp_path}'")
+                            os.system(f"su -c 'rm -f {tmp_path}'")
                         
                         # 3. เปิดเกม
                         map_id = get_map_id()
@@ -202,12 +218,11 @@ def auto_rejoin_checker():
                         else:
                             os.system(f"su -c 'monkey -p {package_name} -c android.intent.category.LAUNCHER 1'")
                         
-                        # 4. ระบบคูลดาวน์ (รอเปิดจอถัดไป)
+                        # 4. ระบบคูลดาวน์
                         if cfg["LAUNCH_DELAY"] > 0:
                             print(f"{YELLOW}  ↳ Cooldown: Waiting {cfg['LAUNCH_DELAY']}s before next action...{RESET}", flush=True)
                             time.sleep(cfg["LAUNCH_DELAY"])
                             
-                    # เผื่อเวลาให้เกมโหลดเข้าแมพ + เวลารอ Timeout ของระบบ
                     clients_last_seen[clone_id] = time.time() + 30 
                     clients_retry_count[clone_id] = retry_count + 1
                 else:
@@ -229,7 +244,6 @@ su -c "mkdir -p $CONFIG_DIR" 2>/dev/null
 mkdir -p "$CONFIG_DIR" 2>/dev/null
 mkdir -p "$SWITCH_DIR" 2>/dev/null
 
-# สร้างไฟล์ตั้งค่าเริ่มต้นถ้ายังไม่มี
 if [ ! -f "$CONFIG_DIR/settings.txt" ]; then
     echo "CHECK_INTERVAL=30" > "$CONFIG_DIR/settings.txt"
     echo "TIMEOUT=40" >> "$CONFIG_DIR/settings.txt"
