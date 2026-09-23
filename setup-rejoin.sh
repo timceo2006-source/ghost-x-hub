@@ -19,7 +19,6 @@ MAX_RETRIES = 3
 CONFIG_DIR = "/storage/emulated/0/GhostXHub"
 APPS_PACKAGE_NAMES = {}
 
-# รหัสสีสำหรับ Python
 GREEN = '\033[92m'
 RED = '\033[91m'
 YELLOW = '\033[93m'
@@ -82,92 +81,105 @@ CONFIG_DIR="/storage/emulated/0/GhostXHub"
 su -c "mkdir -p $CONFIG_DIR" 2>/dev/null
 mkdir -p "$CONFIG_DIR" 2>/dev/null
 
-# รหัสสีสำหรับ Bash
 GREEN="\e[32m"
 RED="\e[31m"
 YELLOW="\e[33m"
+CYAN="\e[36m"
 RESET="\e[0m"
 
 scan_apps() {
-    echo -e "${YELLOW}Scanning for installed Roblox apps...${RESET}"
+    clear
+    echo -e "${CYAN}====================================${RESET}"
+    echo -e "${YELLOW}  Scanning for Roblox Apps...${RESET}"
+    echo -e "${CYAN}====================================${RESET}"
+    
     su -c 'pm list packages | grep -i roblox' | cut -d':' -f2 > "$CONFIG_DIR/apps.txt"
     
     app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
     if [ "$app_count" -gt 0 ]; then
-        echo -e "${GREEN}Found $app_count Roblox app(s):${RESET}"
-        cat "$CONFIG_DIR/apps.txt"
+        echo -e "${GREEN}  Found $app_count App(s):${RESET}"
+        local i=1
+        while IFS= read -r pkg; do
+            echo -e "  [$i] ${GREEN}$pkg${RESET}"
+            i=$((i+1))
+        done < "$CONFIG_DIR/apps.txt"
     else
-        echo -e "${RED}Warning: No Roblox apps found by scanner!${RESET}"
+        echo -e "${RED}  Warning: No apps found!${RESET}"
         echo "com.roblox.client" > "$CONFIG_DIR/apps.txt"
+        echo -e "  [1] Default: com.roblox.client"
     fi
+    
+    echo -e "\n${YELLOW}  Returning to menu in 3 seconds...${RESET}"
+    sleep 3
 }
 
-# บังคับสแกนจอ 1 รอบตอนเปิดครั้งแรก
 if [ ! -f "$CONFIG_DIR/apps.txt" ]; then
-    echo -e "${YELLOW}Initial setup: Auto-scanning for apps...${RESET}"
     scan_apps
-    sleep 2
 fi
 
 while true; do
     clear
-    echo -e "${GREEN}==================================${RESET}"
-    echo -e "${GREEN}       GHOST X HUB MENU${RESET}"
-    echo -e "${GREEN}==================================${RESET}"
-    echo -e " 1. Start Auto-Rejoin System"
-    echo -e " 2. Refresh/Scan Roblox Apps"
-    echo -e " 3. Setup Cookie & Map Config"
-    echo -e " 0. Exit"
-    echo -e "${GREEN}==================================${RESET}"
-    read -p "Select Option [0-3]: " opt
+    echo -e "${GREEN}====================================${RESET}"
+    echo -e "${GREEN}          GHOST X HUB MENU          ${RESET}"
+    echo -e "${GREEN}====================================${RESET}"
+    echo -e "  [1] Start Auto-Rejoin System"
+    echo -e "  [2] Refresh/Scan Roblox Apps"
+    echo -e "  [3] Setup Cookie & Map Config"
+    echo -e "  [0] Exit"
+    echo -e "${GREEN}====================================${RESET}"
+    read -p "  Select Option [0-3]: " opt
 
     case $opt in
         1)
-            # เช็คว่าจำนวนจอ กับ จำนวนคุกกี้ เท่ากันไหม
             app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
             cookie_count=$(grep -c . "$CONFIG_DIR/cookie.txt" 2>/dev/null || echo 0)
             
             if [ "$cookie_count" -lt "$app_count" ] || [ "$cookie_count" -eq 0 ]; then
-                echo -e "${RED}Error: You have $app_count apps but only $cookie_count cookies set.${RESET}"
-                echo -e "${YELLOW}Please go to Option 3 to setup cookies for ALL clones!${RESET}"
-                sleep 4
+                echo -e "\n${RED}  [Error] You have $app_count apps but only $cookie_count cookies set.${RESET}"
+                echo -e "${YELLOW}  Please use Option 3 to setup cookies!${RESET}"
+                sleep 3
                 continue
             fi
             break
             ;;
         2)
             scan_apps
-            read -p "Press Enter to continue..."
             ;;
         3)
+            clear
             app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
-            echo -e "${YELLOW}You have $app_count clones. Please enter a Cookie for each.${RESET}"
+            echo -e "${CYAN}====================================${RESET}"
+            echo -e "${YELLOW}  Setup Cookies for $app_count Clones${RESET}"
+            echo -e "${CYAN}====================================${RESET}"
             
-            # ล้างคุกกี้เก่าทิ้งเพื่อใส่ใหม่ให้ตรง
             > "$CONFIG_DIR/cookie.txt" 
             
-            # วนลูปถามคุกกี้ตามจำนวนจอที่หาเจอ
-            for i in $(seq 1 $app_count); do
-                pkg=$(sed -n "${i}p" "$CONFIG_DIR/apps.txt")
-                read -p "Enter Cookie for Clone $i ($pkg): " cookie_data
+            local i=1
+            while IFS= read -r pkg; do
+                echo -e "\n${GREEN}Clone $i (${pkg})${RESET}"
+                read -p "  Paste Cookie: " cookie_data
                 echo "$cookie_data" >> "$CONFIG_DIR/cookie.txt"
-            done
+                i=$((i+1))
+            done < "$CONFIG_DIR/apps.txt"
             
-            read -p "Enter Map ID (Optional): " map_data
+            echo -e "\n${CYAN}====================================${RESET}"
+            read -p "  Enter Map ID (Optional): " map_data
             echo "$map_data" > "$CONFIG_DIR/map.txt"
-            echo -e "${GREEN}Config saved successfully!${RESET}"
-            read -p "Press Enter to continue..."
+            
+            echo -e "\n${GREEN}  Config saved successfully!${RESET}"
+            sleep 2
             ;;
         0)
             exit 0
             ;;
         *)
-            echo -e "${RED}Invalid Option!${RESET}"
+            echo -e "\n${RED}  Invalid Option!${RESET}"
             sleep 1
             ;;
     esac
 done
 
+clear
 echo -e "${YELLOW}Clearing old processes...${RESET}"
 kill -9 $(lsof -t -i:5000) 2>/dev/null
 su -c 'kill -9 $(lsof -t -i:5000)' 2>/dev/null
