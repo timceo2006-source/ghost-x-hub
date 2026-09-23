@@ -37,14 +37,18 @@ def load_apps():
     if not APPS_PACKAGE_NAMES:
         APPS_PACKAGE_NAMES["clone_1"] = "com.roblox.client"
 
+def get_map_id():
+    map_file = os.path.join(CONFIG_DIR, "map.txt")
+    if os.path.exists(map_file):
+        with open(map_file, "r") as f:
+            return f.read().strip()
+    return ""
+
 load_apps()
 
-# ==========================================
-# อัปเกรด: สั่งให้ระบบบังคับเปิดเกมตั้งแต่แรกเริ่ม
 for cid in APPS_PACKAGE_NAMES.keys():
     clients_last_seen[cid] = 0
     clients_retry_count[cid] = 0
-# ==========================================
 
 @app.route('/heartbeat', methods=['POST'])
 def heartbeat():
@@ -57,7 +61,6 @@ def heartbeat():
     return "OK", 200
 
 def auto_rejoin_checker():
-    # หน่วงเวลาให้เซิร์ฟเวอร์เปิดเสร็จก่อน 5 วินาที ค่อยสั่งดีดเกม
     time.sleep(5) 
     while True:
         current_time = time.time()
@@ -74,7 +77,16 @@ def auto_rejoin_checker():
                     if package_name:
                         os.system(f"su -c 'am force-stop {package_name}'")
                         time.sleep(2)
-                        os.system(f"su -c 'monkey -p {package_name} -c android.intent.category.LAUNCHER 1'")
+                        
+                        map_id = get_map_id()
+                        if map_id:
+                            print(f"{YELLOW}[{clone_id}] Joining Map ID: {map_id}...{RESET}", flush=True)
+                            # ใช้ Deep Link บังคับเข้าแมพทันทีที่เปิดแอป
+                            os.system(f"su -c 'am start -a android.intent.action.VIEW -d \"roblox://placeId={map_id}\" -p {package_name}'")
+                        else:
+                            # ถ้าไม่ได้ใส่ Map ID ไว้ จะแค่เปิดแอปเฉยๆ
+                            os.system(f"su -c 'monkey -p {package_name} -c android.intent.category.LAUNCHER 1'")
+                    
                     clients_last_seen[clone_id] = current_time + 60 
                     clients_retry_count[clone_id] = retry_count + 1
                 else:
