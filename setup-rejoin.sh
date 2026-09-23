@@ -2,7 +2,8 @@
 
 echo "Installing packages..."
 pkg update -y > /dev/null 2>&1
-pkg install python openssh psmisc lsof -y > /dev/null 2>&1
+# เพิ่มแพ็กเกจ ncurses-utils สำหรับช่วยรีเซ็ตหน้าจอ
+pkg install python openssh psmisc lsof ncurses-utils -y > /dev/null 2>&1
 pip install flask > /dev/null 2>&1
 
 echo "Creating server.py..."
@@ -87,19 +88,32 @@ YELLOW="\e[33m"
 CYAN="\e[36m"
 RESET="\e[0m"
 
+# ซ่อมบัคหน้าจอเบี้ยว (Staircase Effect)
+stty sane 2>/dev/null
+tput reset 2>/dev/null
+
 scan_apps() {
+    # บังคับรีเซ็ตหน้าจอก่อนแสดงผล
+    stty sane 2>/dev/null
     clear
     echo -e "${CYAN}====================================${RESET}"
     echo -e "${YELLOW}  Scanning for Roblox Apps...${RESET}"
     echo -e "${CYAN}====================================${RESET}"
     
-    # ดึงชื่อแอปและลบตัวอักษรซ่อนเร้น (\r) ที่ทำให้สคริปต์บัคทิ้งให้หมด
-    su -c 'pm list packages | grep com.roblox' | cut -d':' -f2 | tr -d '\r' > "$CONFIG_DIR/apps.txt"
+    > "$CONFIG_DIR/apps.txt"
+    # กรองเอาช่องว่างและตัวอักษรซ่อนเร้นออกให้หมดจด 100%
+    su -c 'pm list packages' | grep -i roblox | cut -d':' -f2 | tr -d '\r' | tr -d ' ' > "$CONFIG_DIR/apps.txt"
     
-    app_count=$(cat "$CONFIG_DIR/apps.txt" | wc -l)
+    app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
     if [ "$app_count" -gt 0 ]; then
         echo -e "${GREEN}  Found $app_count App(s):${RESET}"
-        cat "$CONFIG_DIR/apps.txt" | awk '{print "  ["NR"] \033[92m" $0 "\033[0m"}'
+        local i=1
+        while IFS= read -r pkg; do
+            if [ -n "$pkg" ]; then
+                echo -e "  [$i] ${GREEN}$pkg${RESET}"
+                i=$((i+1))
+            fi
+        done < "$CONFIG_DIR/apps.txt"
     else
         echo -e "${RED}  Warning: No apps found!${RESET}"
         echo "com.roblox.client" > "$CONFIG_DIR/apps.txt"
@@ -115,6 +129,8 @@ if [ ! -f "$CONFIG_DIR/apps.txt" ]; then
 fi
 
 while true; do
+    # บังคับรีเซ็ตหน้าจอกลับเป็นปกติก่อนวาดเมนู
+    stty sane 2>/dev/null
     clear
     echo -e "${GREEN}====================================${RESET}"
     echo -e "${GREEN}          GHOST X HUB MENU          ${RESET}"
@@ -128,7 +144,7 @@ while true; do
 
     case $opt in
         1)
-            app_count=$(cat "$CONFIG_DIR/apps.txt" | wc -l)
+            app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
             cookie_count=$(grep -c . "$CONFIG_DIR/cookie.txt" 2>/dev/null || echo 0)
             
             if [ "$cookie_count" -lt "$app_count" ] || [ "$cookie_count" -eq 0 ]; then
@@ -143,25 +159,25 @@ while true; do
             scan_apps
             ;;
         3)
+            stty sane 2>/dev/null
             clear
-            app_count=$(cat "$CONFIG_DIR/apps.txt" | wc -l)
+            app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
             echo -e "${CYAN}====================================${RESET}"
             echo -e "${YELLOW}  Setup Cookies for $app_count Clones${RESET}"
             echo -e "${CYAN}====================================${RESET}"
             
             > "$CONFIG_DIR/cookie.txt" 
             
-            # เปลี่ยนมาใช้ for loop ป้องกันบัคข้ามบรรทัด
             for i in $(seq 1 $app_count); do
                 pkg=$(sed -n "${i}p" "$CONFIG_DIR/apps.txt")
                 echo -e "\n${GREEN}Clone $i (${pkg})${RESET}"
-                read -p "  Paste Cookie: " cookie_data
+                read -p "  Paste Cookie: " cookie_data </dev/tty
                 echo "$cookie_data" >> "$CONFIG_DIR/cookie.txt"
             done
             
             echo -e "\n${CYAN}====================================${RESET}"
             echo -e "${YELLOW}*Tip: You can edit map.txt directly in folder: GhostXHub${RESET}"
-            read -p "  Enter Map ID (Leave blank to skip): " map_data
+            read -p "  Enter Map ID (Leave blank to skip): " map_data </dev/tty
             if [ -n "$map_data" ]; then
                 echo "$map_data" > "$CONFIG_DIR/map.txt"
             fi
@@ -170,6 +186,8 @@ while true; do
             sleep 2
             ;;
         0)
+            stty sane 2>/dev/null
+            clear
             exit 0
             ;;
         *)
@@ -179,6 +197,7 @@ while true; do
     esac
 done
 
+stty sane 2>/dev/null
 clear
 echo -e "${YELLOW}Clearing old processes...${RESET}"
 kill -9 $(lsof -t -i:5000) 2>/dev/null
