@@ -2,7 +2,6 @@
 
 echo "Installing packages..."
 pkg update -y > /dev/null 2>&1
-# เพิ่ม lsof เข้าไปในชุดติดตั้ง
 pkg install python openssh psmisc lsof -y > /dev/null 2>&1
 pip install flask > /dev/null 2>&1
 
@@ -60,10 +59,8 @@ echo "Creating start.sh..."
 cat << 'EOF' > start.sh
 #!/bin/bash
 echo "Clearing old processes..."
-# ท่าไม้ตาย: เล็งเป้าเตะเฉพาะคนที่ถือพอร์ต 5000 (ทั้งแบบปกติและแบบ Root)
 kill -9 $(lsof -t -i:5000) 2>/dev/null
 su -c 'kill -9 $(lsof -t -i:5000)' 2>/dev/null
-
 fuser -k -9 5000/tcp 2>/dev/null
 killall -9 python 2>/dev/null
 pkill -9 -f python
@@ -76,7 +73,7 @@ python -u server.py &
 sleep 3
 
 echo "Opening tunnel..."
-ssh -o StrictHostKeyChecking=no -R 80:localhost:5000 serveo.net 2>&1 | grep -Eo 'https://[^ ]+\.serveousercontent\.com' | while read -r url; do
+ssh -o StrictHostKeyChecking=no -R 80:localhost:5000 serveo.net 2>&1 | grep --line-buffered -Eo 'https://[^ ]+\.serveousercontent\.com' | while read -r url; do
     echo "URL: $url"
     su -c "echo '$url' > /storage/emulated/0/Delta/Workspace/server_url.txt"
     echo "URL saved to workspace."
