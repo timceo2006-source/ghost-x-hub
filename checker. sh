@@ -1,0 +1,120 @@
+#!/bin/bash
+CONFIG_DIR="/storage/emulated/0/GhostXHub"
+GREEN="\e[32m"
+RED="\e[31m"
+YELLOW="\e[33m"
+CYAN="\e[36m"
+RESET="\e[0m"
+
+check_cookie() {
+    local cookie="$1"
+    local name="$2"
+    local response=$(curl -s -o /dev/null -w "%{http_code}" \
+        -H "Cookie: .ROBLOSECURITY=$cookie" \
+        -H "User-Agent: Roblox/Android" \
+        "https://users.roblox.com/v1/users/authenticated")
+    if [ "$response" == "200" ]; then
+        local user_info=$(curl -s \
+            -H "Cookie: .ROBLOSECURITY=$cookie" \
+            -H "User-Agent: Roblox/Android" \
+            "https://users.roblox.com/v1/users/authenticated")
+        local username=$(echo "$user_info" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+        local display=$(echo "$user_info" | grep -o '"displayName":"[^"]*"' | cut -d'"' -f4)
+        echo -e "  ${GREEN}✓ VALID${RESET}   [$name] => ${CYAN}${display} (@${username})${RESET}"
+        return 0
+    elif [ "$response" == "401" ]; then
+        echo -e "  ${RED}✗ EXPIRED${RESET} [$name] => Cookie is dead"
+        return 1
+    else
+        echo -e "  ${YELLOW}? UNKNOWN${RESET} [$name] => HTTP $response"
+        return 2
+    fi
+}
+
+check_normal_mode() {
+    stty sane 2>/dev/null
+    clear
+    echo -e "${CYAN}====================================${RESET}"
+    echo -e "${YELLOW}  Checking Normal Mode Cookies${RESET}"
+    echo -e "${CYAN}====================================${RESET}\n"
+    if [ ! -f "$CONFIG_DIR/cookie.txt" ]; then
+        echo -e "${RED}  No cookie.txt found!${RESET}"
+        sleep 3
+        return
+    fi
+    local i=1
+    while IFS= read -r cookie; do
+        if [ -n "$cookie" ]; then
+            check_cookie "$cookie" "Clone_$i"
+        fi
+        i=$((i+1))
+    done < "$CONFIG_DIR/cookie.txt"
+    echo -e "\n${YELLOW}  Done. Press [ENTER] to return...${RESET}"
+    read -r
+}
+
+check_switch_mode() {
+    stty sane 2>/dev/null
+    clear
+    echo -e "${CYAN}====================================${RESET}"
+    echo -e "${YELLOW}  Checking Auto-Switch Cookies${RESET}"
+    echo -e "${CYAN}====================================${RESET}\n"
+    if [ ! -d "$CONFIG_DIR/AutoSwitch" ]; then
+        echo -e "${RED}  No AutoSwitch folder found!${RESET}"
+        sleep 3
+        return
+    fi
+    for file in "$CONFIG_DIR/AutoSwitch"/*.txt; do
+        if [ -f "$file" ]; then
+            local clone_name=$(basename "$file" .txt)
+            echo -e "${CYAN}--- $clone_name ---${RESET}"
+            while IFS= read -r line; do
+                if [ -n "$line" ]; then
+                    local cookie=$(echo "$line" | awk -F':' '{print $NF}')
+                    local acc_name=$(echo "$line" | awk -F':' '{print $1}')
+                    check_cookie "$cookie" "$acc_name"
+                fi
+            done < "$file"
+            echo ""
+        fi
+    done
+    echo -e "${YELLOW}  Done. Press [ENTER] to return...${RESET}"
+    read -r
+}
+
+check_all_mode() {
+    stty sane 2>/dev/null
+    clear
+    echo -e "${CYAN}====================================${RESET}"
+    echo -e "${YELLOW}  Checking ALL Cookies${RESET}"
+    echo -e "${CYAN}====================================${RESET}\n"
+    if [ -f "$CONFIG_DIR/cookie.txt" ]; then
+        echo -e "${GREEN}[Normal Mode]${RESET}"
+        local i=1
+        while IFS= read -r cookie; do
+            if [ -n "$cookie" ]; then
+                check_cookie "$cookie" "Clone_$i"
+            fi
+            i=$((i+1))
+        done < "$CONFIG_DIR/cookie.txt"
+        echo ""
+    fi
+    if [ -d "$CONFIG_DIR/AutoSwitch" ]; then
+        echo -e "${GREEN}[Auto-Switch Mode]${RESET}"
+        for file in "$CONFIG_DIR/AutoSwitch"/*.txt; do
+            if [ -f "$file" ]; then
+                local clone_name=$(basename "$file" .txt)
+                echo -e "${CYAN}--- $clone_name ---${RESET}"
+                while IFS= read -r line; do
+                    if [ -n "$line" ]; then
+                        local cookie=$(echo "$line" | awk -F':' '{print $NF}')
+                        local acc_name=$(echo "$line" | awk -F':' '{print $1}')
+                        check_cookie "$cookie" "$acc_name"
+                    fi
+                done < "$file"
+            fi
+        done
+    fi
+    echo -e "\n${YELLOW}  Done. Press [ENTER] to return...${RESET}"
+    read -r
+}
