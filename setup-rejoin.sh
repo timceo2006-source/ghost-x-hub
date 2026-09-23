@@ -148,6 +148,7 @@ def auto_rejoin_checker():
             for cid in APPS_PACKAGE_NAMES.keys():
                 l_seen = clients_last_seen.get(cid, 0)
                 d_name = clients_usernames.get(cid, cid)
+                
                 if l_seen == 0 or (current_time - l_seen) > cfg["TIMEOUT"]:
                     print(f"{RED}✗ [{d_name}] OFFLINE (Rejoining soon...){RESET}")
                 else:
@@ -168,57 +169,40 @@ def auto_rejoin_checker():
                     
                     package_name = APPS_PACKAGE_NAMES.get(clone_id)
                     if package_name:
-                        # 1. ฆ่าแอปทิ้ง 100%
                         os.system(f"su -c 'am force-stop {package_name}'")
                         time.sleep(2)
+                        
+                        # ==========================================
+                        # แก้บัคหน้าจอ Account Switcher แบบถอนรากถอนโคน
+                        xml_dir = f"/data/data/{package_name}/shared_prefs"
+                        xml_path = f"{xml_dir}/com.roblox.client_preferences.xml"
+                        
+                        # สั่งลบประวัติบัญชีเก่าทั้งหมดให้เกลี้ยง
+                        os.system(f"su -c 'rm -f {xml_dir}/*'")
+                        os.system(f"su -c 'mkdir -p {xml_dir}'")
+                        os.system(f"su -c 'chmod 777 {xml_dir}'")
+                        # ==========================================
                         
                         acc_name, acc_cookie = get_cookie_and_name(clone_id)
                         if acc_cookie:
                             print(f"{CYAN}  ↳ Injecting Cookie: {acc_name}{RESET}", flush=True)
+                            xml_content = f"<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <string name=\".ROBLOSECURITY\">{acc_cookie}</string>\n</map>"
+                            tmp_path = f"/storage/emulated/0/GhostXHub/tmp_{clone_id}.xml"
                             
-                            # สคริปต์ทะลวง Cache และสวมรอย Permission ของแอป
-                            inject_script = f"""#!/bin/sh
-pkg_dir="/data/data/{package_name}"
-prefs_dir="$pkg_dir/shared_prefs"
-xml_file="$prefs_dir/com.roblox.client_preferences.xml"
-
-# ระเบิด Cache ของเก่าทิ้ง (สำคัญมาก ป้องกันไอดีเก่าค้าง)
-rm -rf "$pkg_dir/app_webview"
-rm -rf "$pkg_dir/cache"
-
-# สร้างโฟลเดอร์ prefs
-mkdir -p "$prefs_dir"
-
-# เขียนไฟล์คุกกี้ใหม่
-cat << 'EOF2' > "$xml_file"
-<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
-<map>
-    <string name=".ROBLOSECURITY">{acc_cookie}</string>
-</map>
-EOF2
-
-# สวมรอยสิทธิ์ให้ตัวเกมสามารถอ่านไฟล์นี้ได้ (แก้บัคเกมไม่อ่านคุกกี้)
-APP_USER=$(ls -ld "$pkg_dir" | awk '{{print $3}}')
-chown $APP_USER:$APP_USER "$xml_file"
-chmod 660 "$xml_file"
-chown $APP_USER:$APP_USER "$prefs_dir"
-chmod 771 "$prefs_dir"
-"""
-                            tmp_path = f"/storage/emulated/0/GhostXHub/inj_{clone_id}.sh"
                             with open(tmp_path, "w") as tf:
-                                tf.write(inject_script)
+                                tf.write(xml_content)
                             
-                            os.system(f"su -c 'sh {tmp_path}'")
-                            os.system(f"su -c 'rm -f {tmp_path}'")
+                            # ใช้ cat เขียนทับเพื่อป้องกันปัญหา SELinux Permission
+                            os.system(f"su -c 'cat {tmp_path} > {xml_path}'")
+                            os.system(f"su -c 'chmod 777 {xml_path}'")
+                            os.system(f"rm {tmp_path}")
                         
-                        # 3. เปิดเกม
                         map_id = get_map_id()
                         if map_id:
                             os.system(f"su -c 'am start -a android.intent.action.VIEW -d \"roblox://placeId={map_id}\" -p {package_name}'")
                         else:
                             os.system(f"su -c 'monkey -p {package_name} -c android.intent.category.LAUNCHER 1'")
                         
-                        # 4. ระบบคูลดาวน์
                         if cfg["LAUNCH_DELAY"] > 0:
                             print(f"{YELLOW}  ↳ Cooldown: Waiting {cfg['LAUNCH_DELAY']}s before next action...{RESET}", flush=True)
                             time.sleep(cfg["LAUNCH_DELAY"])
@@ -402,6 +386,8 @@ while true; do
             read -p "  Enter Map ID (Leave blank to skip): " map_data </dev/tty
             if [ -n "$map_data" ]; then
                 echo "$map_data" > "$CONFIG_DIR/map.txt"
+            else
+                > "$CONFIG_DIR/map.txt"
             fi
             
             echo -e "\n${GREEN}  Config saved successfully!${RESET}"
