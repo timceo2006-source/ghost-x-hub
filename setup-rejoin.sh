@@ -2,7 +2,6 @@
 
 echo "Installing packages..."
 pkg update -y > /dev/null 2>&1
-# เพิ่มแพ็กเกจ ncurses-utils สำหรับช่วยรีเซ็ตหน้าจอ
 pkg install python openssh psmisc lsof ncurses-utils -y > /dev/null 2>&1
 pip install flask > /dev/null 2>&1
 
@@ -40,6 +39,13 @@ def load_apps():
 
 load_apps()
 
+# ==========================================
+# อัปเกรด: สั่งให้ระบบบังคับเปิดเกมตั้งแต่แรกเริ่ม
+for cid in APPS_PACKAGE_NAMES.keys():
+    clients_last_seen[cid] = 0
+    clients_retry_count[cid] = 0
+# ==========================================
+
 @app.route('/heartbeat', methods=['POST'])
 def heartbeat():
     data = request.json
@@ -51,13 +57,19 @@ def heartbeat():
     return "OK", 200
 
 def auto_rejoin_checker():
+    # หน่วงเวลาให้เซิร์ฟเวอร์เปิดเสร็จก่อน 5 วินาที ค่อยสั่งดีดเกม
+    time.sleep(5) 
     while True:
         current_time = time.time()
         for clone_id, last_seen in list(clients_last_seen.items()):
             if current_time - last_seen > 30:
                 retry_count = clients_retry_count.get(clone_id, 0)
                 if retry_count < MAX_RETRIES:
-                    print(f"{YELLOW}[{clone_id}] Disconnected. Retry: {retry_count + 1}/{MAX_RETRIES}{RESET}", flush=True)
+                    if retry_count == 0:
+                        print(f"{YELLOW}[{clone_id}] Starting App...{RESET}", flush=True)
+                    else:
+                        print(f"{YELLOW}[{clone_id}] Disconnected. Retry: {retry_count}/{MAX_RETRIES}{RESET}", flush=True)
+                    
                     package_name = APPS_PACKAGE_NAMES.get(clone_id)
                     if package_name:
                         os.system(f"su -c 'am force-stop {package_name}'")
@@ -88,12 +100,10 @@ YELLOW="\e[33m"
 CYAN="\e[36m"
 RESET="\e[0m"
 
-# ซ่อมบัคหน้าจอเบี้ยว (Staircase Effect)
 stty sane 2>/dev/null
 tput reset 2>/dev/null
 
 scan_apps() {
-    # บังคับรีเซ็ตหน้าจอก่อนแสดงผล
     stty sane 2>/dev/null
     clear
     echo -e "${CYAN}====================================${RESET}"
@@ -101,7 +111,6 @@ scan_apps() {
     echo -e "${CYAN}====================================${RESET}"
     
     > "$CONFIG_DIR/apps.txt"
-    # กรองเอาช่องว่างและตัวอักษรซ่อนเร้นออกให้หมดจด 100%
     su -c 'pm list packages' | grep -i roblox | cut -d':' -f2 | tr -d '\r' | tr -d ' ' > "$CONFIG_DIR/apps.txt"
     
     app_count=$(grep -c . "$CONFIG_DIR/apps.txt")
@@ -129,7 +138,6 @@ if [ ! -f "$CONFIG_DIR/apps.txt" ]; then
 fi
 
 while true; do
-    # บังคับรีเซ็ตหน้าจอกลับเป็นปกติก่อนวาดเมนู
     stty sane 2>/dev/null
     clear
     echo -e "${GREEN}====================================${RESET}"
