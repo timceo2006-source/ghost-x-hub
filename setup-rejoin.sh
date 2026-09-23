@@ -16,8 +16,6 @@ app = Flask(__name__)
 clients_last_seen = {}
 clients_retry_count = {}
 MAX_RETRIES = 3
-
-# Config package names here
 APPS_PACKAGE_NAMES = {
     "clone_1": "com.roblox.clienu"
 }
@@ -29,7 +27,7 @@ def heartbeat():
     if clone_id:
         clients_last_seen[clone_id] = time.time()
         clients_retry_count[clone_id] = 0 
-        print(f"[{clone_id}] Online ({time.strftime('%H:%M:%S')})")
+        print(f"[{clone_id}] Online ({time.strftime('%H:%M:%S')})", flush=True)
     return "OK", 200
 
 def auto_rejoin_checker():
@@ -39,7 +37,7 @@ def auto_rejoin_checker():
             if current_time - last_seen > 30:
                 retry_count = clients_retry_count.get(clone_id, 0)
                 if retry_count < MAX_RETRIES:
-                    print(f"[{clone_id}] Disconnected. Retry: {retry_count + 1}/{MAX_RETRIES}")
+                    print(f"[{clone_id}] Disconnected. Retry: {retry_count + 1}/{MAX_RETRIES}", flush=True)
                     package_name = APPS_PACKAGE_NAMES.get(clone_id)
                     if package_name:
                         os.system(f"su -c 'am force-stop {package_name}'")
@@ -48,7 +46,7 @@ def auto_rejoin_checker():
                     clients_last_seen[clone_id] = current_time + 60 
                     clients_retry_count[clone_id] = retry_count + 1
                 else:
-                    print(f"[{clone_id}] Suspended for 5 mins.")
+                    print(f"[{clone_id}] Suspended for 5 mins.", flush=True)
                     clients_last_seen[clone_id] = current_time + 300 
         time.sleep(5)
 
@@ -69,7 +67,7 @@ killall -9 node 2>/dev/null
 sleep 2
 
 echo "Starting server..."
-python server.py &
+python -u server.py &
 sleep 3
 
 echo "Opening tunnel..."
