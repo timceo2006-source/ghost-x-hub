@@ -61,7 +61,7 @@ def heartbeat():
     return "OK", 200
 
 def auto_rejoin_checker():
-    time.sleep(5) 
+    time.sleep(3) 
     while True:
         current_time = time.time()
         for clone_id, last_seen in list(clients_last_seen.items()):
@@ -81,10 +81,8 @@ def auto_rejoin_checker():
                         map_id = get_map_id()
                         if map_id:
                             print(f"{YELLOW}[{clone_id}] Joining Map ID: {map_id}...{RESET}", flush=True)
-                            # ใช้ Deep Link บังคับเข้าแมพทันทีที่เปิดแอป
                             os.system(f"su -c 'am start -a android.intent.action.VIEW -d \"roblox://placeId={map_id}\" -p {package_name}'")
                         else:
-                            # ถ้าไม่ได้ใส่ Map ID ไว้ จะแค่เปิดแอปเฉยๆ
                             os.system(f"su -c 'monkey -p {package_name} -c android.intent.category.LAUNCHER 1'")
                     
                     clients_last_seen[clone_id] = current_time + 60 
@@ -114,6 +112,32 @@ RESET="\e[0m"
 
 stty sane 2>/dev/null
 tput reset 2>/dev/null
+clear
+
+# ==========================================
+# เคลียร์โพรเซสและเปิดอุโมงค์ล่วงหน้าตั้งแต่ตอนรันสคริปต์ (Fast Boot)
+echo -e "${YELLOW}Initializing Ghost X Hub...${RESET}"
+kill -9 $(lsof -t -i:5000) 2>/dev/null
+su -c 'kill -9 $(lsof -t -i:5000)' 2>/dev/null
+fuser -k -9 5000/tcp 2>/dev/null
+killall -9 python 2>/dev/null
+pkill -9 -f python
+killall -9 ssh 2>/dev/null
+rm -f "$CONFIG_DIR/tunnel.log"
+
+echo -e "${CYAN}Establishing Secure Tunnel...${RESET}"
+ssh -o StrictHostKeyChecking=no -R 80:localhost:5000 serveo.net > "$CONFIG_DIR/tunnel.log" 2>&1 &
+
+# ดักรอเอา URL ไปเก็บไว้ใน Workspace ให้ Delta ทันที
+for i in {1..10}; do
+    url=$(grep -Eo 'https://[^ ]+\.serveousercontent\.com' "$CONFIG_DIR/tunnel.log" | head -n 1)
+    if [ -n "$url" ]; then
+        su -c "echo '$url' > /storage/emulated/0/Delta/Workspace/server_url.txt"
+        break
+    fi
+    sleep 1
+done
+# ==========================================
 
 scan_apps() {
     stty sane 2>/dev/null
@@ -173,7 +197,26 @@ while true; do
                 sleep 3
                 continue
             fi
-            break
+            
+            stty sane 2>/dev/null
+            clear
+            
+            # รันเซิร์ฟเวอร์แบบ Background
+            python -u server.py &
+            PY_PID=$!
+            
+            echo -e "\n${CYAN}====================================${RESET}"
+            echo -e "${GREEN}  ▶ AUTO-REJOIN IS RUNNING!${RESET}"
+            echo -e "${YELLOW}  Press [ENTER] to STOP and return to Menu${RESET}"
+            echo -e "${CYAN}====================================${RESET}\n"
+            
+            # ระบบหยุดการทำงาน: รอรับคำสั่งปุ่ม Enter
+            read -r
+            
+            echo -e "${RED}Stopping Auto-Rejoin...${RESET}"
+            kill -9 $PY_PID 2>/dev/null
+            pkill -9 -f server.py 2>/dev/null
+            sleep 1
             ;;
         2)
             scan_apps
@@ -216,31 +259,6 @@ while true; do
             ;;
     esac
 done
-
-stty sane 2>/dev/null
-clear
-echo -e "${YELLOW}Clearing old processes...${RESET}"
-kill -9 $(lsof -t -i:5000) 2>/dev/null
-su -c 'kill -9 $(lsof -t -i:5000)' 2>/dev/null
-fuser -k -9 5000/tcp 2>/dev/null
-killall -9 python 2>/dev/null
-pkill -9 -f python
-killall -9 ssh 2>/dev/null
-killall -9 node 2>/dev/null
-sleep 2
-
-echo -e "${GREEN}Starting server...${RESET}"
-python -u server.py &
-sleep 3
-
-echo -e "${GREEN}Opening tunnel...${RESET}"
-ssh -o StrictHostKeyChecking=no -R 80:localhost:5000 serveo.net 2>&1 | grep --line-buffered -Eo 'https://[^ ]+\.serveousercontent\.com' | while read -r url; do
-    echo -e "${GREEN}URL: $url${RESET}"
-    su -c "echo '$url' > /storage/emulated/0/Delta/Workspace/server_url.txt"
-    echo -e "${GREEN}URL saved to workspace.${RESET}"
-    break
-done &
-wait
 EOF
 
 chmod +x start.sh
