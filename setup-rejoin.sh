@@ -169,26 +169,24 @@ def auto_rejoin_checker():
                     
                     package_name = APPS_PACKAGE_NAMES.get(clone_id)
                     if package_name:
-                        # ==========================================
-                        # เทคนิคใหม่: หลอกระบบความปลอดภัยแอนดรอยด์
-                        # 1. ล้างข้อมูลแอป
-                        os.system(f"su -c 'pm clear {package_name}'")
-                        time.sleep(2)
-                        
-                        # 2. เปิดแอปทิ้งไว้ 7 วินาทีให้มันสร้างไฟล์ของตัวเอง
-                        print(f"{CYAN}  ↳ Initializing App Security (Please wait 7s)...{RESET}", flush=True)
-                        os.system(f"su -c 'monkey -p {package_name} -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1'")
-                        time.sleep(7)
-                        
-                        # 3. ฆ่าแอปทิ้งอีกรอบเพื่อเตรียมยัดคุกกี้
+                        # 1. ฆ่าแอปทิ้ง
                         os.system(f"su -c 'am force-stop {package_name}'")
                         time.sleep(2)
+                        
+                        # ==========================================
+                        # ล้างข้อมูลแบบเจาะจง (Surgical Wipe) เพื่อกันป๊อปอัพแอนดรอยด์แจ้งเตือน
+                        data_dir = f"/data/data/{package_name}"
+                        os.system(f"su -c 'rm -rf {data_dir}/shared_prefs/*'")
+                        os.system(f"su -c 'rm -rf {data_dir}/app_webview/*'")
+                        os.system(f"su -c 'rm -rf {data_dir}/databases/*'")
+                        os.system(f"su -c 'rm -rf {data_dir}/cache/*'")
+                        # ==========================================
                         
                         acc_name, acc_cookie = get_cookie_and_name(clone_id)
                         if acc_cookie:
                             print(f"{CYAN}  ↳ Injecting Cookie: {acc_name}{RESET}", flush=True)
                             
-                            xml_dir = f"/data/data/{package_name}/shared_prefs"
+                            xml_dir = f"{data_dir}/shared_prefs"
                             xml_path = f"{xml_dir}/com.roblox.client_preferences.xml"
                             
                             xml_content = f"<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <string name=\".ROBLOSECURITY\">{acc_cookie}</string>\n</map>"
@@ -200,13 +198,12 @@ def auto_rejoin_checker():
                             os.system(f"su -c 'mkdir -p {xml_dir}'")
                             os.system(f"su -c 'cat {tmp_path} > {xml_path}'")
                             
-                            # 4. บังคับเปลี่ยนสิทธิ์และเจ้าของไฟล์ให้เป็นของ Roblox 100%
-                            os.system(f"su -c 'chmod 660 {xml_path}'")
-                            fix_uid_cmd = f"su -c 'APP_UID=$(stat -c %U /data/data/{package_name}); chown -R $APP_UID:$APP_UID {xml_dir}'"
+                            # ดึงรหัส UID ของแอปตัวนี้ แล้วบังคับมอบความเป็นเจ้าของไฟล์คุกกี้ให้มัน 100%
+                            fix_uid_cmd = f"su -c 'APP_UID=$(stat -c %u {data_dir}); chown -R $APP_UID:$APP_UID {xml_dir}'"
                             os.system(fix_uid_cmd)
+                            os.system(f"su -c 'chmod -R 777 {xml_dir}'")
                             
                             os.system(f"rm -f {tmp_path}")
-                        # ==========================================
                         
                         map_id = get_map_id()
                         if map_id:
@@ -218,8 +215,7 @@ def auto_rejoin_checker():
                             print(f"{YELLOW}  ↳ Cooldown: Waiting {cfg['LAUNCH_DELAY']}s before next action...{RESET}", flush=True)
                             time.sleep(cfg["LAUNCH_DELAY"])
                             
-                    # เผื่อเวลาให้เกมโหลดนานขึ้นชดเชยเวลา Initialize
-                    clients_last_seen[clone_id] = time.time() + 45 
+                    clients_last_seen[clone_id] = time.time() + 30 
                     clients_retry_count[clone_id] = retry_count + 1
                 else:
                     print(f"{RED}[{display_name}] Suspended for 5 mins.{RESET}", flush=True)
